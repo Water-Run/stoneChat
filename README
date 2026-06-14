@@ -1,8 +1,12 @@
 stoneChat (a caveman peeking at modern technology) is a simple LLM Web Chat, adapted for Windows XP & IE6.
 
-To run it, your device needs a PHP 5.2 environment. As for all the remaining network-related problems, let the program handle them.
+To run it, your device needs a PHP 5.2 environment. Get it from:
+https://windows.php.net/downloads/releases/archives/
 
-Download or clone this Project. Run RUN.bat to start the program. You need to edit CONF.ini according to the comments to configure the LLM and other settings -- it is very simple, just follow the comments.
+As for all the remaining network-related problems, let the program handle them. You will also need stunnel for HTTPS:
+https://www.stunnel.org/downloads.html
+
+Download or clone this Project. Run INSTALL.bat (recommended) or RUN.bat to start the program. You need to edit CONF.ini according to the comments to configure the LLM and other settings -- it is very simple, just follow the comments.
 
 Then visit it in your browser. The default address is:
 http://localhost:9999

@@ -1,0 +1,662 @@
+/*
+ * stoneChat main stylesheet.
+ *
+ * Retro 2001-era web aesthetic, IE6 / Win XP compatible.
+ * Pure CSS2.1 - no border-radius, no box-shadow, no transitions,
+ * no transforms, no @keyframes, no gradients.
+ *
+ * Color palette:
+ *   bg          #f4f1ea  (beige page background)
+ *   panel       #ffffff  (white panel surface)
+ *   text        #333333  (dark gray body text)
+ *   muted       #666666  (helper text)
+ *   link        #003366  (navy hyperlink)
+ *   link-hover  #990000  (dark red hover)
+ *   border      #888888  (default 1px border)
+ *   border-lit  #ffffff  (top/left highlight on outset buttons)
+ *   border-dk   #444444  (bottom/right shadow on outset buttons)
+ *   good        #2a6f2a  (green status badge)
+ *   bad         #8b1a1a  (red status badge)
+ *
+ * Layout uses div + float (IE6-compatible) with a 760px centered wrapper.
+ * The two-column chat page uses a fixed-width sidebar (180px) floated left
+ * and a main pane floated right.
+ */
+
+/* -------------------------------------------------------------------------
+ * Reset / base
+ * ------------------------------------------------------------------------- */
+body {
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  background: #f4f1ea;
+  color: #333;
+  margin: 0;
+  padding: 0;
+  line-height: 1.4;
+}
+
+a {
+  color: #003366;
+  text-decoration: underline;
+}
+a:hover {
+  color: #990000;
+  text-decoration: underline;
+}
+a:visited {
+  color: #003366;
+}
+
+h1, h2, h3, h4 {
+  font-family: Tahoma, Verdana, sans-serif;
+  color: #333;
+  margin: 0;
+  padding: 0;
+  font-weight: bold;
+}
+
+p {
+  margin: 0 0 8px 0;
+  padding: 0;
+}
+
+img {
+  border: 0;
+  vertical-align: middle;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #888;
+  height: 0;
+  margin: 8px 0;
+}
+
+ul, ol {
+  margin: 0;
+  padding: 0 0 0 18px;
+}
+
+li {
+  margin: 0;
+  padding: 0;
+}
+
+/* -------------------------------------------------------------------------
+ * Wrapper - fixed 760px centered (IE6-safe via margin: auto)
+ * ------------------------------------------------------------------------- */
+.wrap {
+  width: 760px;
+  margin: 0 auto;
+  padding: 8px;
+  text-align: left;
+}
+
+/* -------------------------------------------------------------------------
+ * Header bar (logo + lang switcher + title)
+ * ------------------------------------------------------------------------- */
+.header {
+  width: 760px;
+  background: #ffffff;
+  border: 1px solid #888;
+  padding: 6px 8px;
+  margin: 0 0 6px 0;
+  overflow: hidden;
+}
+
+.header-logo {
+  float: left;
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.header-logo img {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.lang-switcher {
+  float: right;
+  font-size: 11px;
+  color: #666;
+}
+
+.lang-switcher a {
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  text-decoration: none;
+  color: #003366;
+}
+.lang-switcher a:hover {
+  background: #ffffff;
+  color: #990000;
+}
+.lang-switcher a.lang-active {
+  background: #003366;
+  color: #ffffff;
+  border: 1px solid #003366;
+}
+
+/* -------------------------------------------------------------------------
+ * Two-column layout for chat page
+ * Sidebar floats left (180px), main-content floats right (~570px).
+ * ------------------------------------------------------------------------- */
+.chat-layout {
+  width: 760px;
+  overflow: hidden;
+}
+
+.sidebar {
+  float: left;
+  width: 180px;
+  background: #ffffff;
+  border: 1px solid #888;
+  margin: 0 6px 0 0;
+  padding: 4px;
+}
+
+.main-content {
+  float: right;
+  width: 568px;
+  background: #ffffff;
+  border: 1px solid #888;
+  padding: 4px;
+}
+
+/* -------------------------------------------------------------------------
+ * Top menu inside main pane
+ *   model-name, connect-button, tokens, timeout, stream-badge, mn-badge
+ * ------------------------------------------------------------------------- */
+.top-menu {
+  border: 1px solid #888;
+  background: #ece8df;
+  padding: 4px 6px;
+  margin: 0 0 4px 0;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.top-menu .row {
+  margin: 2px 0;
+  overflow: hidden;
+}
+
+.top-menu label {
+  display: inline-block;
+  width: 80px;
+  color: #666;
+  font-size: 11px;
+}
+
+.top-menu .model-name {
+  float: left;
+  width: 240px;
+  padding: 1px 4px;
+  border: 1px solid #888;
+  background: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+  color: #333;
+}
+
+.top-menu .tokens,
+.top-menu .timeout {
+  width: 60px;
+  padding: 1px 2px;
+  border: 1px solid #888;
+  background: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+}
+
+.top-menu .badge-row {
+  margin-top: 4px;
+  padding: 2px 4px;
+  border: 1px solid #888;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+/* -------------------------------------------------------------------------
+ * Status badge (used by stream-badge, mn-badge)
+ *   on  -> green #2a6f2a
+ *   off -> red   #8b1a1a
+ * ------------------------------------------------------------------------- */
+.status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid #888;
+  background: #ffffff;
+  font-size: 11px;
+  font-family: Tahoma, Verdana, sans-serif;
+  color: #333;
+  margin-right: 4px;
+}
+
+.status-badge.status-on {
+  background: #2a6f2a;
+  color: #ffffff;
+  border: 1px solid #2a6f2a;
+}
+
+.status-badge.status-off {
+  background: #8b1a1a;
+  color: #ffffff;
+  border: 1px solid #8b1a1a;
+}
+
+.status-badge.status-warn {
+  background: #ffffff;
+  color: #8b1a1a;
+  border: 1px solid #8b1a1a;
+}
+
+.status-badge.status-good {
+  background: #ffffff;
+  color: #2a6f2a;
+  border: 1px solid #2a6f2a;
+}
+
+/* -------------------------------------------------------------------------
+ * Connect / disconnect button (3D outset, :hover changes nothing per spec)
+ * ------------------------------------------------------------------------- */
+.btn {
+  display: inline-block;
+  padding: 2px 10px;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+  color: #333;
+  background: #d4d0c8;
+  border-top: 1px solid #ffffff;
+  border-left: 1px solid #ffffff;
+  border-right: 1px solid #444444;
+  border-bottom: 1px solid #444444;
+  cursor: pointer;
+  text-decoration: none;
+  margin: 0 2px;
+  vertical-align: middle;
+}
+.btn:active {
+  border-top: 1px solid #444444;
+  border-left: 1px solid #444444;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+}
+
+.btn-connect {
+  /* visual cue when connected vs disconnected */
+  font-weight: bold;
+}
+
+/* -------------------------------------------------------------------------
+ * Chat messages area
+ * ------------------------------------------------------------------------- */
+.chat-messages {
+  border: 1px solid #888;
+  background: #ffffff;
+  padding: 6px;
+  height: 360px;
+  overflow: auto;
+  margin: 0 0 4px 0;
+  font-size: 12px;
+}
+
+.chat-messages .msg {
+  margin: 0 0 8px 0;
+  padding: 4px 6px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  overflow: hidden;
+}
+
+.chat-messages .msg-role {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  color: #666;
+  margin: 0 0 2px 0;
+  border-bottom: 1px solid #ccc;
+  padding: 0 0 2px 0;
+}
+
+.chat-messages .user-message {
+  background: #e8e4d8;
+  border: 1px solid #888;
+}
+
+.chat-messages .user-message .msg-role {
+  color: #003366;
+}
+
+.chat-messages .assistant-message {
+  background: #ffffff;
+  border: 1px solid #888;
+}
+
+.chat-messages .assistant-message .msg-role {
+  color: #2a6f2a;
+}
+
+.chat-messages .msg-body {
+  display: block;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  color: #333;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.chat-messages .msg-actions {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #666;
+}
+
+/* -------------------------------------------------------------------------
+ * Input area (textarea + send + countdown)
+ * ------------------------------------------------------------------------- */
+.input-area {
+  border: 1px solid #888;
+  background: #ece8df;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.input-area textarea {
+  width: 540px;
+  height: 60px;
+  padding: 3px;
+  border-top: 1px solid #444444;
+  border-left: 1px solid #444444;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+  background: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  color: #333;
+  resize: none;
+  margin: 0 4px 0 0;
+  vertical-align: top;
+}
+
+.input-area .send-button {
+  float: right;
+  width: 70px;
+  height: 60px;
+  padding: 0;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+  background: #d4d0c8;
+  border-top: 1px solid #ffffff;
+  border-left: 1px solid #ffffff;
+  border-right: 1px solid #444444;
+  border-bottom: 1px solid #444444;
+  cursor: pointer;
+  vertical-align: top;
+}
+.input-area .send-button:active {
+  border-top: 1px solid #444444;
+  border-left: 1px solid #444444;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+}
+
+.input-area .countdown {
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+  clear: both;
+  padding: 0 2px;
+}
+
+/* -------------------------------------------------------------------------
+ * History list (sidebar)
+ * ------------------------------------------------------------------------- */
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+}
+
+.history-list li {
+  margin: 0 0 2px 0;
+  padding: 2px 4px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.history-list li.history-active {
+  background: #003366;
+  color: #ffffff;
+  border: 1px solid #003366;
+}
+
+.history-list li.history-active a {
+  color: #ffffff;
+}
+
+.history-list a {
+  display: block;
+  color: #003366;
+  text-decoration: none;
+}
+.history-list a:hover {
+  text-decoration: underline;
+  color: #990000;
+}
+
+.history-list .history-title {
+  display: block;
+  font-weight: bold;
+  color: #333;
+}
+
+.history-list li.history-active .history-title {
+  color: #ffffff;
+}
+
+.history-list .history-meta {
+  display: block;
+  font-size: 10px;
+  color: #666;
+}
+
+.history-list li.history-active .history-meta {
+  color: #d4d0c8;
+}
+
+.history-list .history-delete {
+  float: right;
+  font-size: 10px;
+  color: #8b1a1a;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+/* -------------------------------------------------------------------------
+ * Sidebar header / new chat button
+ * ------------------------------------------------------------------------- */
+.sidebar-header {
+  border-bottom: 1px solid #888;
+  padding: 2px 0 4px 0;
+  margin: 0 0 4px 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: bold;
+  color: #333;
+}
+
+.sidebar-header .new-chat {
+  float: right;
+  font-size: 11px;
+  font-weight: normal;
+}
+
+/* -------------------------------------------------------------------------
+ * Modal dialog (about + new-chat)
+ *   Uses absolute positioning; sized fixed for IE6 compatibility.
+ *   The .modal-mask covers the viewport with a solid (not alpha) color.
+ * ------------------------------------------------------------------------- */
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #888;
+  z-index: 100;
+  display: none;
+}
+
+.modal-mask.modal-show {
+  display: block;
+}
+
+.modal-dialog {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  width: 420px;
+  margin-left: -210px;
+  background: #ffffff;
+  border: 1px solid #444;
+  padding: 0;
+  z-index: 101;
+  display: none;
+}
+
+.modal-dialog.modal-show {
+  display: block;
+}
+
+.modal-dialog .modal-title {
+  background: #003366;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #444;
+}
+
+.modal-dialog .modal-body {
+  padding: 8px;
+  font-size: 12px;
+  color: #333;
+  background: #ffffff;
+}
+
+.modal-dialog .modal-footer {
+  border-top: 1px solid #888;
+  background: #ece8df;
+  padding: 4px 6px;
+  text-align: right;
+  overflow: hidden;
+}
+
+/* -------------------------------------------------------------------------
+ * Login page
+ * ------------------------------------------------------------------------- */
+.login-wrap {
+  width: 320px;
+  margin: 80px auto;
+  background: #ffffff;
+  border: 1px solid #888;
+  padding: 12px;
+}
+
+.login-wrap h1 {
+  font-size: 18px;
+  margin: 0 0 8px 0;
+  border-bottom: 1px solid #888;
+  padding: 0 0 4px 0;
+}
+
+.login-wrap label {
+  display: block;
+  font-size: 11px;
+  color: #666;
+  margin: 4px 0 2px 0;
+}
+
+.login-wrap input[type="text"],
+.login-wrap input[type="password"] {
+  width: 290px;
+  padding: 2px 4px;
+  border-top: 1px solid #444444;
+  border-left: 1px solid #444444;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+  background: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  color: #333;
+}
+
+.login-wrap .login-error {
+  color: #8b1a1a;
+  font-size: 11px;
+  margin: 6px 0;
+}
+
+/* -------------------------------------------------------------------------
+ * Generic form controls (1px inset border look)
+ * ------------------------------------------------------------------------- */
+input[type="text"],
+input[type="password"],
+select,
+textarea {
+  border-top: 1px solid #444444;
+  border-left: 1px solid #444444;
+  border-right: 1px solid #ffffff;
+  border-bottom: 1px solid #ffffff;
+  background: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 12px;
+  color: #333;
+  padding: 2px 4px;
+}
+
+select {
+  padding: 1px 2px;
+}
+
+/* -------------------------------------------------------------------------
+ * Utility classes
+ * ------------------------------------------------------------------------- */
+.clear {
+  clear: both;
+  height: 0;
+  line-height: 0;
+  font-size: 0;
+}
+
+.muted {
+  color: #666;
+}
+
+.right {
+  text-align: right;
+}
+
+.center {
+  text-align: center;
+}
+
+.hidden {
+  display: none;
+}
+
+.spacer {
+  height: 8px;
+  line-height: 8px;
+}
