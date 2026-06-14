@@ -13,3 +13,10 @@ desktop.ini
 *.bak
 *.tmp
 *~
+
+# ModernNetwork runtime artifacts
+ModernNetwork/stunnel.conf
+ModernNetwork/stunnel.pid
+
+# Design specs / development docs
+docs/superpower*

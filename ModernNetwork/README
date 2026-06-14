@@ -1,0 +1,19 @@
+ModernNetwork provides HTTPS connectivity for PHP 5.2 on Windows XP.
+
+Modern APIs (OpenAI, Anthropic, Poe, etc.) require TLS 1.2, but PHP 5.2's
+SSL libraries only support TLS 1.0. ModernNetwork solves this by using
+stunnel as a local TLS tunnel: PHP connects to stunnel on localhost via
+plain HTTP, and stunnel handles TLS 1.2 to the remote API.
+
+proxy.php manages stunnel automatically. You do not need to start or
+configure stunnel yourself.
+
+Requirements:
+- stunnel: https://www.stunnel.org/
+
+Setup:
+1. Install stunnel on Windows.
+2. Edit CONF.ini:
+   - Set [paths] stunnel to your stunnel.exe path.
+   - Set [proxy] port to the local tunnel port (default 8443).
+3. Run RUN.bat. proxy.php will launch stunnel on the first API call.
