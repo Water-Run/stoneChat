@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="robots" content="noindex,nofollow" />
+<title>stoneChat</title>
+<link rel="stylesheet" type="text/css" href="css/main.css" />
+<script type="text/javascript" src="js/i18n.js"></script>
+<script type="text/javascript" src="js/api.js"></script>
+</head>
+<body onload="scLoginInit()">
+<div class="wrap">
+  <div class="header">
+    <div class="header-logo">
+      <img src="../Assets/logo.png" alt="stoneChat" width="24" height="24" />
+      <span id="logo-text">stoneChat</span>
+    </div>
+    <div class="lang-switcher" id="lang-switcher"></div>
+    <div class="clear"></div>
+  </div>
+</div>
+<div class="login-wrap">
+  <h1 data-i18n="login.title">Login</h1>
+  <form id="login-form" action="#" method="post" onsubmit="return scLoginSubmit(this);">
+    <label for="password" data-i18n="login.password">Password</label>
+    <input type="password" name="password" id="password" autocomplete="off" />
+    <div id="login-error" class="login-error"></div>
+    <div class="login-actions">
+      <input type="submit" id="login-submit" class="btn" value="Sign in" data-i18n="login.submit" />
+    </div>
+  </form>
+</div>
+<div class="wrap">
+  <div class="center spacer">
+    <a href="javascript:void(0)" data-i18n="chat.about">About</a>
+  </div>
+</div>
+<script type="text/javascript">
+//<![CDATA[
+/**
+ * stoneChat Pages/index.htm bootstrap and login form handler.
+ *
+ * Designed for IE6 on Windows XP. Pure ES3 JavaScript: var/function only,
+ * no const/let/arrow, no template literals, no fetch/Promise.
+ *
+ * scLoginInit()
+ *   Page-load bootstrap. Reads the public config (title + language list)
+ *   via window.SC.Api.getConfig(), then initialises the i18n module and
+ *   replaces the language switcher placeholder with the rendered HTML.
+ *
+ * scLoginSubmit(form)
+ *   onsubmit handler. Always returns false to suppress the native form
+ *   post. Calls window.SC.Api.login() and either redirects to chat.htm
+ *   (on success) or surfaces a localised error message. Locked state
+ *   (HTTP 423 or a 'locked' / 'too_many_attempts' error code) is mapped
+ *   to a single user-facing prompt and the inputs are disabled.
+ */
+function scLoginInit() {
+  var api = (typeof window.SC !== 'undefined' && window.SC && window.SC.Api)
+            ? window.SC.Api : window.scApi;
+  var i18n = (typeof window.SC !== 'undefined' && window.SC && window.SC.I18n)
+             ? window.SC.I18n : window.scI18n;
+
+  // Fallback list mirrors the bundled set in js/i18n.js. Used only when
+  // /Server/api/config.php is unreachable.
+  var supportedLangs = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'fr', 'de'];
+  var defaultLang = 'en';
+  var pageTitle = 'stoneChat';
+
+  if (api && typeof api.getConfig === 'function') {
+    var cfg = api.getConfig();
+    if (cfg && cfg.ok && cfg.data) {
+      if (cfg.data.langs && cfg.data.langs.length) {
+        supportedLangs = cfg.data.langs;
+      }
+      if (cfg.data.default_lang) {
+        defaultLang = cfg.data.default_lang;
+      }
+      if (cfg.data.title) {
+        pageTitle = cfg.data.title;
+      }
+    }
+  }
+
+  // Apply the resolved title both to the browser chrome and to the
+  // visible header text.
+  document.title = pageTitle;
+  var logoEl = document.getElementById('logo-text');
+  if (logoEl) {
+    if (typeof logoEl.textContent === 'string') {
+      logoEl.textContent = pageTitle;
+    } else {
+      logoEl.innerText = pageTitle;
+    }
+  }
+
+  if (i18n && typeof i18n.init === 'function') {
+    i18n.init(supportedLangs, defaultLang);
+  }
+  if (i18n && typeof i18n.apply === 'function') {
+    i18n.apply();
+  }
+  // apply() walks textContent, which is invisible on <input> elements.
+  // For the submit button we need to update its value attribute too so the
+  // rendered label reflects the chosen language from the very first paint.
+  if (i18n && typeof i18n.t === 'function') {
+    var btnInit = document.getElementById('login-submit');
+    if (btnInit) { btnInit.value = i18n.t('login.submit'); }
+  }
+  if (i18n && typeof i18n.getLangSwitcherHTML === 'function') {
+    var sw = document.getElementById('lang-switcher');
+    if (sw) {
+      sw.innerHTML = i18n.getLangSwitcherHTML();
+    }
+  }
+
+  // Auto-focus the password input so the user can start typing.
+  var pwd = document.getElementById('password');
+  if (pwd && typeof pwd.focus === 'function') {
+    try { pwd.focus(); } catch (e) { /* ignore focus errors on hidden tabs */ }
+  }
+}
+
+function scLoginSubmit(form) {
+  var api = (typeof window.SC !== 'undefined' && window.SC && window.SC.Api)
+            ? window.SC.Api : window.scApi;
+  var i18n = (typeof window.SC !== 'undefined' && window.SC && window.SC.I18n)
+             ? window.SC.I18n : window.scI18n;
+  var t = (i18n && typeof i18n.t === 'function')
+          ? function (k) { return i18n.t(k); }
+          : function (k) { return k; };
+
+  var pwd = document.getElementById('password');
+  var errEl = document.getElementById('login-error');
+  var btn = document.getElementById('login-submit');
+
+  if (!pwd) {
+    return false;
+  }
+  var password = pwd.value || '';
+  if (password === '') {
+    if (errEl) {
+      errEl.textContent = t('login.error');
+    }
+    if (typeof pwd.focus === 'function') {
+      try { pwd.focus(); } catch (e) { /* ignore */ }
+    }
+    return false;
+  }
+
+  // Disable the submit button and surface an in-flight hint so the user
+  // gets feedback while the synchronous login XHR is in progress.
+  var submitLabel = t('login.submit');
+  var inFlightLabel = (i18n && typeof i18n.t === 'function') ? i18n.t('login.submitting') : 'login.submitting';
+  // t() returns the key when the lookup misses; fall back to a literal.
+  if (!inFlightLabel || inFlightLabel === 'login.submitting') {
+    inFlightLabel = '...';
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.value = inFlightLabel;
+  }
+  if (errEl) {
+    errEl.textContent = '';
+  }
+
+  var result = (api && typeof api.login === 'function')
+    ? api.login(password)
+    : { ok: false, error: 'xhr_unavailable' };
+
+  if (btn) {
+    btn.disabled = false;
+    btn.value = submitLabel;
+  }
+
+  if (result && result.ok) {
+    // Successful authentication: redirect to the chat shell. The cookie
+    // is already set by /Server/api/auth.php on the same response, so
+    // chat.htm will see a valid session on load.
+    window.location.href = 'chat.htm';
+    return false;
+  }
+
+  var code = (result && result.error) ? String(result.error) : 'unknown';
+  var message = '';
+
+  // Detect a locked-account response. The auth endpoint may signal this
+  // either via HTTP 423 (Locked) or by returning a server-defined error
+  // code such as 'locked' or 'too_many_attempts'. Both shapes are mapped
+  // to a single lockout prompt and the inputs are disabled.
+  var isLocked = (code.indexOf('http_423') === 0)
+                 || /lock(ed|out)?/i.test(code)
+                 || /too[_ ]?many[_ ]?attempts/i.test(code);
+  if (isLocked) {
+    var lockedMsg = t('login.locked');
+    if (!lockedMsg || lockedMsg === 'login.locked') {
+      lockedMsg = 'System locked, please restart';
+    }
+    message = lockedMsg;
+    if (pwd) { pwd.disabled = true; }
+    if (btn) { btn.disabled = true; }
+  } else if (code.indexOf('http_401') === 0 || /unauthor/i.test(code)) {
+    message = t('error.unauthorized');
+  } else if (code.indexOf('timeout') === 0) {
+    message = t('error.timeout');
+  } else if (code.indexOf('network') === 0 || code.indexOf('http_0') === 0) {
+    message = t('error.network');
+  } else {
+    message = t('login.error');
+  }
+
+  if (errEl) {
+    if (typeof errEl.textContent === 'string') {
+      errEl.textContent = message;
+    } else {
+      errEl.innerText = message;
+    }
+  }
+  if (typeof pwd.select === 'function') {
+    try { pwd.select(); } catch (e) { /* ignore */ }
+  }
+  return false;
+}
+
+// Expose for inline event handlers and any external callers that prefer
+// the global namespace.
+window.scLoginInit = scLoginInit;
+window.scLoginSubmit = scLoginSubmit;
+//]]>
+</script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="robots" content="noindex,nofollow" />
+<title>stoneChat</title>
+<link rel="stylesheet" type="text/css" href="css/main.css" />
+<style type="text/css">
+/* chat.htm layout additions on top of Pages/css/main.css.
+ * IE6-safe: no flexbox, no CSS3 selectors, no border-radius, no transforms.
+ * The goal is to keep the 2001-era aesthetic and only define what's
+ * strictly needed for the new input-toolbar / sidebar-footer / modal
+ * structures that the page introduces. */
+.app-shell { width: 760px; margin: 0 auto; padding: 8px; }
+.input-area textarea.msg-input {
+  width: 100%;
+  height: 60px;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
+}
+.input-area .input-toolbar {
+  clear: both;
+  padding: 4px 0 0 0;
+  overflow: hidden;
+  width: 100%;
+}
+.input-area .input-toolbar .char-count {
+  float: left;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 20px;
+}
+.input-area .input-toolbar .countdown {
+  float: left;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 20px;
+}
+.input-area .input-toolbar .btn {
+  float: right;
+  margin-left: 4px;
+}
+.input-area .input-toolbar .send-button { font-weight: bold; }
+.sidebar-footer {
+  clear: both;
+  padding: 4px 0 0 0;
+  border-top: 1px solid #888;
+  margin-top: 4px;
+}
+.sidebar-footer .btn {
+  display: block;
+  margin: 2px 0;
+  text-align: left;
+}
+.modal-title .sc-modal-close {
+  float: right;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+.newchat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.newchat-list li {
+  margin: 0 0 4px 0;
+  padding: 4px 6px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  overflow: hidden;
+}
+.newchat-list .newchat-name { font-size: 12px; color: #333; }
+.newchat-list .newchat-meta { font-size: 11px; color: #666; }
+.newchat-list .newchat-badges { margin-top: 2px; }
+.newchat-list .newchat-actions { margin-top: 4px; text-align: right; }
+</style>
+<script type="text/javascript" src="js/i18n.js"></script>
+<script type="text/javascript" src="js/api.js"></script>
+<script type="text/javascript" src="js/chat.js"></script>
+<script type="text/javascript" src="js/app.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Header: brand logo (click -> SC.App.showAboutDialog) + language switcher.
+       The id="sc-logo" is what app.js binds to open the About dialog. -->
+  <div class="header">
+    <div class="header-logo" id="sc-logo">
+      <img src="../Assets/logo.png" alt="stoneChat" width="24" height="24" />
+      <span data-i18n="app.title">stoneChat</span>
+    </div>
+    <div class="lang-switcher" id="sc-lang-switcher"></div>
+    <div class="clear"></div>
+  </div>
+
+  <!-- Two-column chat layout: sidebar (left) + main content (right).
+       The 760px width matches the header for a tidy, centered look. -->
+  <div class="chat-layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span data-i18n="sidebar.history">History</span>
+        <a class="btn new-chat" id="sc-new-chat-btn" href="javascript:void(0)" data-i18n="chat.newChat">[+ New chat]</a>
+      </div>
+      <ul class="history-list" id="sc-history-list"></ul>
+      <div class="sidebar-footer">
+        <a class="btn" id="sc-open-config-btn" href="javascript:void(0)" data-i18n="chat.editConfig">[Edit config]</a>
+        <a class="btn" id="sc-reload-config-btn" href="javascript:void(0)" data-i18n="chat.reloadConfig">[Reload config]</a>
+        <a class="btn" id="sc-logout-btn" href="javascript:void(0)" data-i18n="chat.logout">[Logout]</a>
+      </div>
+    </div>
+    <div class="main-content">
+      <!-- Top status menu. Populated by SC.App.renderTopMenu():
+           model name | check button | tokens | timeout | stream badge. -->
+      <div class="top-menu" id="sc-top-menu">
+        <span class="muted">Loading...</span>
+      </div>
+      <!-- Message bubbles go here. Populated by SC.Chat.renderMessage(). -->
+      <div class="chat-messages" id="chat-messages"></div>
+      <!-- Input area. id="chat-input" matches what Pages/js/chat.js looks for;
+           name="msg-input" is kept as a form-friendly alias. The toolbar
+           carries char count, wait countdown, and send/stop/regenerate. -->
+      <div class="input-area">
+        <textarea id="chat-input" name="msg-input" class="msg-input" rows="3" cols="60"></textarea>
+        <div class="input-toolbar">
+          <span class="char-count" id="char-count">Chars: 0 / 32768</span>
+          <span class="countdown" id="countdown">Wait: 0s</span>
+          <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)" data-i18n="chat.regenerate">[Regenerate]</a>
+          <a class="btn stop-button" id="stop-button" href="javascript:void(0)" data-i18n="chat.stop">[Stop]</a>
+          <a class="btn send-button" id="send-button" href="javascript:void(0)" data-i18n="chat.send">[Send]</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal mask + dialogs. Used by SC.App.showModal()/hideModal().
+     The dialogs are hidden by default (CSS) and revealed by toggling
+     the "modal-show" className. -->
+<div class="modal-mask" id="sc-modal-mask">
+  <div class="modal-dialog" id="sc-modal-about">
+    <div class="modal-title">
+      <span data-i18n="chat.about">About</span>
+      <button class="sc-modal-close" type="button">[x]</button>
+    </div>
+    <div class="modal-body" id="sc-about-body">
+      <p>stoneChat</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn sc-modal-close" type="button" data-i18n="common.close">[Close]</button>
+    </div>
+  </div>
+  <div class="modal-dialog" id="sc-modal-new-chat">
+    <div class="modal-title">
+      <span data-i18n="chat.newChat">New chat</span>
+      <button class="sc-modal-close" type="button">[x]</button>
+    </div>
+    <div class="modal-body">
+      <ul class="newchat-list" id="sc-newchat-list"></ul>
+    </div>
+    <div class="modal-footer">
+      <button class="btn sc-modal-close" type="button" data-i18n="common.close">[Close]</button>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+//<![CDATA[
+/**
+ * Pages/chat.htm page-load bootstrap.
+ *
+ * Runs after all <script> tags have loaded and the DOM is parsed.
+ *   1. Initialises SC.I18n (reads cookie + /api/config).
+ *   2. Applies translations to every [data-i18n] element.
+ *   3. Calls SC.App.bootstrap() which fetches history/providers,
+ *      renders the sidebar and top menu, and wires the global event
+ *      handlers (logo, sidebar buttons, modal close).
+ *
+ * Designed for IE6 / Win-XP:
+ *   - var/function declarations only, no let/const, no arrow funcs
+ *   - No fetch / Promise / localStorage
+ *   - try/catch around every API call so a failure in step 1/2 does
+ *     not abort step 3 (or vice versa)
+ */
+window.onload = function () {
+  var SC = (typeof window.SC !== 'undefined' && window.SC) ? window.SC : null;
+  var i18n = (SC && SC.I18n) ? SC.I18n
+           : (typeof window.scI18n !== 'undefined' ? window.scI18n : null);
+  var api  = (SC && SC.Api)  ? SC.Api
+           : (typeof window.scApi  !== 'undefined' ? window.scApi  : null);
+
+  // 1+2. Initialise i18n. Fall back to the bundled set in js/i18n.js
+  //      when the server config endpoint is unreachable.
+  var supportedLangs = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'fr', 'de'];
+  var defaultLang = 'en';
+  if (api && typeof api.getConfig === 'function') {
+    try {
+      var cfg = api.getConfig();
+      if (cfg && cfg.ok && cfg.data) {
+        if (cfg.data.langs && cfg.data.langs.length) {
+          supportedLangs = cfg.data.langs;
+        }
+        if (cfg.data.default_lang) {
+          defaultLang = cfg.data.default_lang;
+        }
+      }
+    } catch (e) { /* ignore - keep defaults */ }
+  }
+  if (i18n) {
+    if (typeof i18n.init === 'function') {
+      try { i18n.init(supportedLangs, defaultLang); } catch (e) { /* ignore */ }
+    }
+    if (typeof i18n.apply === 'function') {
+      try { i18n.apply(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // 3. Bootstrap the chat UI. App.js is included in <head> as the last
+  //    <script> so window.SC.App is guaranteed to exist on load.
+  if (SC && SC.App && typeof SC.App.bootstrap === 'function') {
+    try { SC.App.bootstrap(); } catch (e) { /* swallow bootstrap error */ }
+  }
+};
+//]]>
+</script>
+</body>
+</html>
