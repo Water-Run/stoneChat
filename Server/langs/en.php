@@ -18,6 +18,7 @@ return array(
     'login.submit'           => 'Sign in',
     'login.error'            => 'Incorrect password. Please try again.',
     'login.locked'           => 'Too many failed attempts. Please wait and try again later.',
+    'login.locked'           => 'Too many failed attempts. Please wait and try again later.',
 
     // --- chat (action buttons / labels) ---
     'chat.send'              => 'Send',

@@ -18,6 +18,7 @@ return array(
     'login.password'         => 'パスワード',
     'login.submit'           => 'ログイン',
     'login.error'            => 'パスワードが正しくありません。もう一度お試しください。',
+    'login.locked'           => 'ログイン失敗が多すぎます。しばらくしてから再度お試しください。',
     'login.locked'           => 'ログイン試行回数が多すぎます。しばらくしてからもう一度お試しください。',
 
     // --- chat (action buttons / labels) ---

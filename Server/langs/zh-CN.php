@@ -18,6 +18,7 @@ return array(
     'login.submit'           => '登录',
     'login.error'            => '密码错误，请重试。',
     'login.locked'           => '登录尝试次数过多，请稍后再试。',
+    'login.locked'           => '登录尝试次数过多，请稍后再试。',
 
     // --- chat (action buttons / labels) ---
     'chat.send'              => '发送',

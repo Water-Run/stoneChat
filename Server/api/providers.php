@@ -205,7 +205,16 @@ if (!function_exists('sc_api_providers_normalize')) {
             'type'         => $type,
             'model'        => $model,
             'api_base'     => $api_base,
-            'api_key'      => sc_api_providers_mask_key($api_key),
+            // The api_key field is exposed only as a redacted marker
+            // ("****" for any non-empty key, "" for empty) so the
+            // public /api/providers response never reveals the first
+            // or last 4 bytes of the real key. The previous
+            // "XXXX****YYYY" head/tail mask leaked a small prefix and
+            // suffix of the secret to any unauthenticated client; the
+            // sc_api_providers_mask_key() helper is kept for callers
+            // that explicitly want a less-aggressive redaction, but
+            // the public shape is now always "****" or "".
+            'api_key'      => $api_key === '' ? '' : '****',
             'stream'       => isset($defaults['stream'])     ? (bool)$defaults['stream']     : false,
             'max_tokens'   => isset($defaults['max_tokens']) ? (int)$defaults['max_tokens'] : 1024,
             'timeout'      => isset($defaults['timeout'])    ? (int)$defaults['timeout']    : 60,

@@ -29,6 +29,7 @@ return array(
     'login.password'         => 'Mot de passe',
     'login.submit'           => 'Connectez-vous',
     'login.error'            => 'Mot de passe incorrect. Veuillez réessayer.',
+    'login.locked'           => 'Trop de tentatives échouées. Veuillez patienter.',
     'login.locked'           => 'Trop de tentatives échouées. Veuillez patienter avant de réessayer.',
 
     // --- chat (action buttons / labels) ---

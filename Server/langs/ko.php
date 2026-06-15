@@ -23,6 +23,7 @@ return array(
     'login.password'         => '비밀번호',
     'login.submit'           => '로그인',
     'login.error'            => '비밀번호가 올바르지 않습니다. 다시 시도해 주십시오.',
+    'login.locked'           => '로그인 실패 횟수가 너무 많습니다. 잠시 후 다시 시도해 주십시오.',
     'login.locked'           => '로그인 시도 횟수가 너무 많습니다. 잠시 후 다시 시도해 주십시오.',
 
     // --- chat (action buttons / labels) ---

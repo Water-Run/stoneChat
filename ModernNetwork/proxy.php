@@ -319,7 +319,17 @@ if (!function_exists('sc_ensure_tunnel')) {
     function sc_ensure_tunnel($target, $cfg, $modern_dir) {
         $conf_path = sc_stunnel_conf_path($modern_dir);
         $pid_path  = sc_stunnel_pid_path($modern_dir);
-        $ca_cert   = sc_resolve_path($cfg['ca_cert'], dirname($modern_dir));
+        // The CA path in CONF.ini is relative to the project root
+        // (the directory that holds CONF.ini). ModernNetwork/ is a
+        // direct child of that root, so its parent -- the *first*
+        // ancestor above $modern_dir -- is the project root. We
+        // intentionally do NOT call dirname() on $modern_dir again:
+        // $modern_dir already ends with "ModernNetwork" and
+        // sc_resolve_path() treats its argument as a directory
+        // before joining, so an extra dirname() walked one level
+        // too high and produced paths like ".../Server/../../...".
+        $ca_cert   = sc_resolve_path($cfg['ca_cert'],
+                                     dirname(__FILE__));
         $current   = sc_read_stunnel_target($conf_path);
         $matches   = !empty($current)
                   && $current['host'] === $target['host']

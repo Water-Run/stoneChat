@@ -31,6 +31,7 @@ return array(
     'login.password'         => 'Passwort',
     'login.submit'           => 'Anmelden',
     'login.error'            => 'Falsches Passwort. Bitte versuchen Sie es erneut.',
+    'login.locked'           => 'Zu viele Fehlversuche. Bitte später erneut versuchen.',
     'login.locked'           => 'Zu viele Fehlversuche. Bitte warten Sie, bevor Sie es erneut versuchen.',
 
     // --- chat (action buttons / labels) ---

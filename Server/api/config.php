@@ -103,9 +103,11 @@ if (!function_exists('sc_api_config_resolve_auth_enabled')) {
      * Decide whether authentication is enabled from the parsed config.
      *
      * Honors an explicit [auth].enabled flag (truthy / falsy strings).
-     * Falls back to "enabled iff a non-empty password is configured" so a
-     * freshly installed CONF.ini with a placeholder password still reports
-     * accurately. The password value itself never leaves this function.
+     * Falls back to "enabled iff a real (non-placeholder) password is
+     * configured" so a freshly installed CONF.ini with placeholder
+     * "YOUR_PASSWORD_HERE" reports auth_enabled = false accurately,
+     * instead of falsely advertising a working login. The password
+     * value itself never leaves this function.
      *
      * @param array $cfg Parsed config from sc_load_config().
      * @return bool
@@ -120,9 +122,14 @@ if (!function_exists('sc_api_config_resolve_auth_enabled')) {
                 return $flag;
             }
         }
-        // Fallback: a non-empty password implies auth is in use.
+        // Fallback: a non-empty, non-placeholder password implies auth.
         if (isset($cfg['auth']['password'])
             && (string)$cfg['auth']['password'] !== '') {
+            $raw = (string)$cfg['auth']['password'];
+            if (function_exists('sc_is_placeholder_password')
+                && sc_is_placeholder_password($raw)) {
+                return false;
+            }
             return true;
         }
         return false;

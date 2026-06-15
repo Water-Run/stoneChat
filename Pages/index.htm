@@ -12,19 +12,15 @@
 <body onload="scLoginInit()">
 <div class="wrap">
   <div class="header">
-    <div class="header-logo">
+    <div class="header-logo" id="sc-logo">
       <img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />
-      <span id="logo-text">stoneChat</span>
+      <span data-i18n="app.title">stoneChat</span>
     </div>
     <div class="lang-switcher" id="lang-switcher"></div>
     <div class="clear"></div>
   </div>
 </div>
 <div class="login-wrap">
-  <div class="login-logo-container">
-    <img src="../Assets/logo_wide.png" alt="stoneChat" class="login-large-logo" />
-    <div class="login-logo-title" id="logo-text-large" style="display:none;">stoneChat</div>
-  </div>
   <h1 data-i18n="login.title">Login</h1>
   <form id="login-form" action="#" method="post" onsubmit="return scLoginSubmit(this);">
     <label for="password" data-i18n="login.password">Password</label>
@@ -35,10 +31,9 @@
     </div>
   </form>
 </div>
-<div class="wrap">
-  <div class="center spacer">
-    <a href="javascript:void(0)" onclick="alert('stoneChat v1\n\nProtocol: stoneChat v1 (HTTP+JSON, file-based HISTORY/)\nAuthor: stoneChat project\nGitHub: https://github.com/waterrun/stoneChat');" data-i18n="chat.about">About</a>
-  </div>
+<div class="login-slogan-block">
+  <img class="login-slogan-logo" src="../Assets/logo.png" alt="stoneChat" />
+  <div class="login-slogan" data-i18n="app.tagline">A locally hosted, multi-provider LLM web chat.</div>
 </div>
 <script type="text/javascript">
 //<![CDATA[
@@ -87,19 +82,9 @@ function scLoginInit() {
     }
   }
 
-  // Apply the resolved title both to the browser chrome and to the
-  // visible header text.
+  // Apply the resolved title to the browser chrome. The header text is
+  // already rendered from data-i18n by the i18n.apply() pass below.
   document.title = pageTitle;
-  var logoEl = document.getElementById('logo-text');
-  if (logoEl) {
-    if (typeof logoEl.textContent === 'string') { logoEl.textContent = pageTitle; }
-    else { logoEl.innerText = pageTitle; }
-  }
-  var logoElLarge = document.getElementById('logo-text-large');
-  if (logoElLarge) {
-    if (typeof logoElLarge.textContent === 'string') { logoElLarge.textContent = pageTitle; }
-    else { logoElLarge.innerText = pageTitle; }
-  }
 
   if (i18n && typeof i18n.init === 'function') {
     i18n.init(supportedLangs, defaultLang);
@@ -199,9 +184,11 @@ function scLoginSubmit(form) {
                  || /lock(ed|out)?/i.test(code)
                  || /too[_ ]?many[_ ]?attempts/i.test(code);
   if (isLocked) {
+    // C4: prefer the i18n-provided "login.locked" copy; fall back to the
+    // English literal only when the language table lacks the key.
     var lockedMsg = t('login.locked');
     if (!lockedMsg || lockedMsg === 'login.locked') {
-      lockedMsg = 'System locked, please restart';
+      lockedMsg = 'Too many failed attempts. Please wait and try again later.';
     }
     message = lockedMsg;
     if (pwd) { pwd.disabled = true; }

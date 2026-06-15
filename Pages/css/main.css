@@ -663,21 +663,106 @@ select {
   line-height: 8px;
 }
 
-/* Centered large login logo styles */
-.login-logo-container {
-  text-align: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #888;
+/* Centered large login logo styles removed; replaced by
+ * .login-slogan-block below. The old banner (logo_wide.png + Login h1)
+ * was redundant with the header brand row and is no longer rendered. */
+
+/* -------------------------------------------------------------------------
+ * chat.htm layout additions (formerly inlined in chat.htm).
+ * IE6-safe: no flexbox, no CSS3 selectors, no border-radius, no transforms.
+ * The goal is to keep the 2001-era aesthetic and only define what's
+ * strictly needed for the new input-toolbar / sidebar-footer / modal
+ * structures that chat.htm introduces.
+ * ------------------------------------------------------------------------- */
+.app-shell { width: 760px; margin: 0 auto; padding: 8px; }
+.input-area textarea.msg-input {
+  width: 100%;
+  height: 60px;
+  box-sizing: border-box;
+  -moz-box-sizing: border-box;
 }
-.login-large-logo {
-  width: 240px;
-  height: 87px;
+.input-area .input-toolbar {
+  clear: both;
+  padding: 4px 0 0 0;
+  overflow: hidden;
+  width: 100%;
+}
+.input-area .input-toolbar .char-count {
+  float: left;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 20px;
+}
+.input-area .input-toolbar .countdown {
+  float: left;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #666;
+  line-height: 20px;
+}
+.input-area .input-toolbar .btn {
+  float: right;
+  margin-left: 4px;
+}
+.input-area .input-toolbar .send-button { font-weight: bold; }
+.sidebar-footer {
+  clear: both;
+  padding: 4px 0 0 0;
+  border-top: 1px solid #888;
+  margin-top: 4px;
+}
+.sidebar-footer .btn {
   display: block;
-  margin: 0 auto 10px auto;
+  margin: 2px 0;
+  text-align: left;
 }
-.login-logo-title {
-  font-size: 28px;
-  font-weight: bold;
-  color: #003366;
+.modal-title .sc-modal-close {
+  float: right;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  font-family: Tahoma, Verdana, sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+.newchat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.newchat-list li {
+  margin: 0 0 4px 0;
+  padding: 4px 6px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  overflow: hidden;
+}
+.newchat-list .newchat-name { font-size: 12px; color: #333; }
+.newchat-list .newchat-meta { font-size: 11px; color: #666; }
+.newchat-list .newchat-badges { margin-top: 2px; }
+.newchat-list .newchat-actions { margin-top: 4px; text-align: right; }
+
+/* -------------------------------------------------------------------------
+ * Login page: large logo + slogan below the login form
+ * (replaces the old .login-large-logo banner; see Pages/index.htm).
+ * ------------------------------------------------------------------------- */
+.login-slogan-block {
+  width: 320px;
+  margin: 24px auto 64px auto;
+  text-align: center;
+}
+.login-slogan-logo {
+  display: block;
+  margin: 0 auto 12px auto;
+  width: 96px;
+  height: 96px;
+}
+.login-slogan {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #555;
+  font-style: italic;
 }

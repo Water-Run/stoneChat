@@ -308,28 +308,14 @@
     }
 
     /* ------------------------------------------------------------------
-     * Extract the assistant reply string from a SC.Api.sendMessage
-     * envelope. Pure function: same input -> same output, no DOM touch.
-     * ------------------------------------------------------------------ */
-
-    function sc_extractReply(data) {
-        var reply = '';
-        if (data && typeof data === 'object') {
-            reply = data.reply || data.message || data.content || data.assistant || '';
-        } else if (typeof data === 'string') {
-            reply = data;
-        }
-        return reply || '[empty response]';
-    }
-
-    /* ------------------------------------------------------------------
      * Public: sendMessage(chatId, text)
-     * - validates input
-     * - renders the user bubble immediately
-     * - disables input / starts countdown
-     * - calls SC.Api.sendMessage
-     * - on success: renders assistant reply, resets input
-     * - on failure: renders an [Error] assistant bubble for visibility
+     *   - validates input
+     *   - renders the user bubble immediately
+     *   - disables input / starts countdown
+     *   - calls SC.Api.sendMessageStream (streaming)
+     *   - on completion: stops countdown, re-enables input
+     *   - on error: appends an "[Error] <reason>" tag to the assistant
+     *     bubble so the failure is visible in the conversation log
      * ------------------------------------------------------------------ */
 
     function sc_sendMessage(chatId, text) {

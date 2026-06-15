@@ -18,6 +18,7 @@ return array(
     'login.password'         => '密碼',
     'login.submit'           => '登入',
     'login.error'            => '密碼錯誤，請重試。',
+    'login.locked'           => '登入失敗次數過多，請稍後再試。',
     'login.locked'           => '登入嘗試次數過多，請稍後再試。',
 
     // --- chat (action buttons / labels) ---

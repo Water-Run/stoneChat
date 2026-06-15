@@ -161,6 +161,16 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
             $resp = sc_http_send_raw(
                 $target['port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60, $stream_callback
             );
+            // When the target is a localhost mock and the port is
+            // closed, distinguish that case from a generic tunnel
+            // failure: "mock_unreachable" tells the UI to surface a
+            // setup hint (start the mock on 9998) instead of blaming
+            // the network layer.
+            if (!is_array($resp)
+                || (isset($resp['error'])
+                    && $resp['error'] === 'connection_failed')) {
+                return array('error' => 'mock_unreachable');
+            }
         } else {
             if (!sc_ensure_tunnel($target, $cfg, $modern_dir)) {
                 return array('error' => 'stunnel_start_failed');

@@ -17,11 +17,24 @@ echo   stoneChat Installer
 echo ============================================================
 echo.
 echo This installer will:
-echo   1. Check your environment (PHP, ports, files, disk, registry).
+echo   1. Check your environment (PHP, ports, files, disk, registry,
+echo      Windows version).
 echo   2. Copy stoneChat files to the chosen folder.
 echo   3. Create a HISTORY\ directory for chat logs.
 echo   4. Create Desktop and Start Menu shortcuts.
 echo.
+
+:: ------------------------------------------------------------
+:: Windows version detection (early, for "modern" warning)
+:: ------------------------------------------------------------
+set "WIN_BUILD=0"
+set "SC_MODERN=0"
+for /f "tokens=*" %%v in ('ver') do set "VER_STR=%%v"
+for /f "tokens=2 delims=[]" %%a in ("!VER_STR!") do set "VER_INNER=%%a"
+for /f "tokens=2"        %%a in ("!VER_INNER!") do set "VER_NUM=%%a"
+for /f "tokens=3 delims=." %%a in ("!VER_NUM!") do set "WIN_BUILD=%%a"
+if "!WIN_BUILD!"=="" set "WIN_BUILD=0"
+if !WIN_BUILD! GEQ 17763 set "SC_MODERN=1"
 
 :: ------------------------------------------------------------
 :: Prompt for install path
@@ -40,7 +53,7 @@ echo Installing to: "%INSTALL_PATH%"
 echo.
 
 :: ============================================================
-:: Environment Check (Plan C: 8 checks)
+:: Environment Check (8 checks)
 :: ============================================================
 set "ERR_COUNT=0"
 
@@ -70,9 +83,9 @@ if errorlevel 1 (
 echo [ 2/8] Port 9999 availability...
 netstat -an | findstr /R /C:":9999 " >nul 2>&1
 if not errorlevel 1 (
-    echo        [FAIL] Port 9999 is already in use.
-    echo               Stop the conflicting service or change CONF.ini [server] port.
-    set /a "ERR_COUNT+=1"
+    echo        [WARN] Port 9999 appears in use. The installer will continue,
+    echo               but you may need to free the port (or change [server]
+    echo               port in CONF.ini) before starting the server.
 ) else (
     echo        [ OK ] Port 9999 is free.
 )
@@ -93,9 +106,10 @@ if exist "%~dp0CONF.ini" (
 if exist "%STUNNEL_PATH%" (
     echo        [ OK ] stunnel found: %STUNNEL_PATH%
 ) else (
-    echo        [FAIL] stunnel.exe not found at: %STUNNEL_PATH%
-    echo               Edit CONF.ini [paths] stunnel to point to your stunnel.exe.
-    set /a "ERR_COUNT+=1"
+    echo        [WARN] stunnel.exe not found at: %STUNNEL_PATH%
+    echo               ModernNetwork/HTTPS features will be disabled until
+    echo               stunnel is installed. Edit CONF.ini [paths] stunnel
+    echo               after install if you need HTTPS for remote LLM APIs.
 )
 
 :: ---- 4. cacert.pem present ----
@@ -139,7 +153,7 @@ if exist "%INSTALL_PATH%\HISTORY\" (
     set /a "ERR_COUNT+=1"
 )
 
-:: ---- 7. Install path writable (for CONF.ini and Server files) ----
+:: ---- 7. Install path writable ----
 echo [ 7/8] Install path write permission...
 set "TEST_FILE=%INSTALL_PATH%\stonechat_write_test.tmp"
 echo. > "%TEST_FILE%" 2>nul
@@ -152,7 +166,7 @@ if exist "%TEST_FILE%" (
     set /a "ERR_COUNT+=1"
 )
 
-:: ---- 8. Registry writable (needed for Desktop / Start Menu shortcuts) ----
+:: ---- 8. Registry writable (needed for shortcuts) ----
 echo [ 8/8] Registry write permission...
 reg add "HKCU\Software\stoneChat_test" /v test /t REG_SZ /d test /f >nul 2>&1
 if not errorlevel 1 (
@@ -164,7 +178,29 @@ if not errorlevel 1 (
     set /a "ERR_COUNT+=1"
 )
 
+:: ------------------------------------------------------------
+:: Windows-version note (informational, never fatal)
+:: ------------------------------------------------------------
 echo.
+if "!SC_MODERN!"=="1" (
+    echo ============================================================
+    echo  Windows version notice
+    echo ============================================================
+    echo  Detected Windows build !WIN_BUILD! (Windows 10 1809 or newer).
+    echo  Your device looks very modern; many modern tools are available.
+    echo.
+    echo  stoneChat is a retro LLM client (IE6 / Windows XP era). It still
+    echo  runs fine on modern hardware; the UI just looks 20+ years old by
+    echo  design. Expect a brief "Super-Modern-HTML" splash on the first
+    echo  page load of every browser session; it auto-redirects after 3s.
+    echo ============================================================
+    echo.
+) else (
+    echo [ OK ] Windows build !WIN_BUILD! ^< 17763; the retro UI will load
+    echo        directly with no splash interlude.
+    echo.
+)
+
 if !ERR_COUNT! GTR 0 (
     echo ============================================================
     echo  Environment check FAILED: !ERR_COUNT! error(s) found.
@@ -326,6 +362,13 @@ echo.
 echo   Double-click the desktop icon, or run:
 echo       "%INSTALL_PATH%\RUN.bat"
 echo.
+if "!SC_MODERN!"=="1" (
+    echo   Note: your Windows build is ^>=^= 10 1809, so the first page load
+    echo   of every browser session will show a brief "Super-Modern-HTML"
+    echo   splash for 3 seconds before the retro UI appears. This is by
+    echo   design and is safe to dismiss by waiting.
+    echo.
+)
 echo   Edit CONF.ini at the install path to set your API keys
 echo   before the first chat.
 echo ============================================================
