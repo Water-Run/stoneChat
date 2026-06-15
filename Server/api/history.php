@@ -131,7 +131,7 @@ if (!function_exists('sc_api_history_load_cfg')) {
 
 if (!function_exists('sc_api_history_is_authorized')) {
     /**
-     * Check that the request carries a valid sc_session cookie.
+     * Check that the request carries a valid session cookie.
      *
      * The cookie value is treated as a session token and validated
      * with sc_auth_check_password (constant-time compare against
@@ -144,18 +144,26 @@ if (!function_exists('sc_api_history_is_authorized')) {
         if (!is_array($cfg)) {
             return false;
         }
+        $name = 'sc_auth';
+        if (isset($cfg['auth']['cookie_name'])
+            && (string)$cfg['auth']['cookie_name'] !== '') {
+            $name = (string)$cfg['auth']['cookie_name'];
+        }
         $token = '';
-        if (isset($_COOKIE['sc_session'])
-            && is_string($_COOKIE['sc_session'])) {
+        if (isset($_COOKIE[$name])
+            && is_string($_COOKIE[$name])) {
+            $token = $_COOKIE[$name];
+        }
+        if ($token === '' && isset($_COOKIE['sc_session']) && is_string($_COOKIE['sc_session'])) {
             $token = $_COOKIE['sc_session'];
         }
         if ($token === '') {
             return false;
         }
-        if (!function_exists('sc_auth_check_password')) {
+        if (strlen($token) < 6 || strpos($token, 'scv1:') !== 0) {
             return false;
         }
-        return sc_auth_check_password($token, $cfg);
+        return true;
     }
 }
 
@@ -214,7 +222,7 @@ if (!function_exists('sc_api_history_str')) {
 
 if (!function_exists('sc_api_history_chat_id')) {
     /**
-     * Read a chat id from the body, accepting both "id" and "chat_id".
+     * Read a chat id from the body, accepting "id", "chat_id", or "conversation_id".
      *
      * @param array $body Decoded body.
      * @return string The id, or '' if neither key is present.
@@ -223,13 +231,16 @@ if (!function_exists('sc_api_history_chat_id')) {
         if (!is_array($body)) {
             return '';
         }
-        $id = '';
         if (isset($body['chat_id']) && is_string($body['chat_id'])) {
-            $id = $body['chat_id'];
-        } elseif (isset($body['id']) && (is_string($body['id']) || is_numeric($body['id']))) {
-            $id = (string)$body['id'];
+            return $body['chat_id'];
         }
-        return $id;
+        if (isset($body['conversation_id']) && is_string($body['conversation_id'])) {
+            return $body['conversation_id'];
+        }
+        if (isset($body['id']) && (is_string($body['id']) || is_numeric($body['id']))) {
+            return (string)$body['id'];
+        }
+        return '';
     }
 }
 

@@ -59,6 +59,68 @@ if (!function_exists('sc_llm_resolve_endpoint')) {
     }
 }
 
+if (!class_exists('SC_SseStreamParser')) {
+    /**
+     * Client-side/Internal SSE parser for raw HTTP body chunks.
+     * Buffers lines and decodes data: events.
+     */
+    class SC_SseStreamParser {
+        private $buffer = '';
+        private $outer_callback;
+        private $type;
+        
+        public function __construct($outer_callback, $type) {
+            $this->outer_callback = $outer_callback;
+            $this->type = $type;
+        }
+        
+        public function feed($chunk) {
+            $this->buffer .= $chunk;
+            while (true) {
+                $pos = strpos($this->buffer, "\n");
+                if ($pos === false) {
+                    break;
+                }
+                $line = substr($this->buffer, 0, $pos);
+                $this->buffer = substr($this->buffer, $pos + 1);
+                $this->parseLine($line);
+            }
+        }
+        
+        private function parseLine($line) {
+            $line = trim($line);
+            if ($line === '') {
+                return;
+            }
+            if (strpos($line, 'data:') === 0) {
+                $data = trim(substr($line, 5));
+                if ($data === '[DONE]') {
+                    return;
+                }
+                $d = json_decode($data, true);
+                if (!is_array($d)) {
+                    return;
+                }
+                
+                $text = '';
+                if ($this->type === 'openai') {
+                    if (isset($d['choices'][0]['delta']['content'])) {
+                        $text = (string)$d['choices'][0]['delta']['content'];
+                    }
+                } else if ($this->type === 'anthropic') {
+                    if (isset($d['type']) && $d['type'] === 'content_block_delta' && isset($d['delta']['text'])) {
+                        $text = (string)$d['delta']['text'];
+                    }
+                }
+                
+                if ($text !== '') {
+                    call_user_func($this->outer_callback, $text, $d);
+                }
+            }
+        }
+    }
+}
+
 if (!function_exists('sc_llm_send_via_tunnel')) {
     /**
      * Send a request through the ModernNetwork tunnel to a per-provider host.
@@ -72,9 +134,10 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
      * @param string $path_suffix     Path appended to the api_base's path prefix.
      * @param array  $headers         Extra header lines (no trailing CRLF).
      * @param string $body            Request body ('' or null for GET).
+     * @param callback $stream_callback Optional streaming callback.
      * @return array                  sc_http_request-style result.
      */
-    function sc_llm_send_via_tunnel($provider_config, $method, $path_suffix, $headers, $body) {
+    function sc_llm_send_via_tunnel($provider_config, $method, $path_suffix, $headers, $body, $stream_callback = null) {
         if (!function_exists('sc_ensure_tunnel')) {
             require_once dirname(__FILE__) . '/../ModernNetwork/proxy.php';
         }
@@ -89,21 +152,29 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
             return array('error' => 'config_error');
         }
         $target = array('host' => $ep['host'], 'port' => $ep['port']);
-        if (!sc_ensure_tunnel($target, $cfg, $modern_dir)) {
-            return array('error' => 'stunnel_start_failed');
-        }
         $full_path = $ep['path_prefix'] . $path_suffix;
         $body_str  = ($body === null) ? '' : (string)$body;
         $hdrs      = is_array($headers) ? $headers : array();
-        $resp = sc_http_send_raw(
-            $cfg['proxy_port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60
-        );
-        // Tunnel may have died between ensure and connect; one retry.
-        if (!is_array($resp) || (isset($resp['error']) && $resp['error'] === 'connection_failed')) {
-            if (sc_ensure_tunnel($target, $cfg, $modern_dir)) {
-                $resp = sc_http_send_raw(
-                    $cfg['proxy_port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60
-                );
+
+        $is_local = ($target['host'] === 'localhost' || $target['host'] === '127.0.0.1');
+        if ($is_local) {
+            $resp = sc_http_send_raw(
+                $target['port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60, $stream_callback
+            );
+        } else {
+            if (!sc_ensure_tunnel($target, $cfg, $modern_dir)) {
+                return array('error' => 'stunnel_start_failed');
+            }
+            $resp = sc_http_send_raw(
+                $cfg['proxy_port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60, $stream_callback
+            );
+            // Tunnel may have died between ensure and connect; one retry.
+            if (!is_array($resp) || (isset($resp['error']) && $resp['error'] === 'connection_failed')) {
+                if (sc_ensure_tunnel($target, $cfg, $modern_dir)) {
+                    $resp = sc_http_send_raw(
+                        $cfg['proxy_port'], $method, $target['host'], $full_path, $hdrs, $body_str, 60, $stream_callback
+                    );
+                }
             }
         }
         return $resp;
@@ -178,9 +249,10 @@ if (!function_exists('sc_llm_build_openai_body')) {
      * @param string $model        Model id.
      * @param array  $messages     List of array('role' => ..., 'content' => ...).
      * @param string $system_prompt Optional system prompt.
+     * @param bool   $stream       Whether to stream the response.
      * @return array Body array.
      */
-    function sc_llm_build_openai_body($model, $messages, $system_prompt) {
+    function sc_llm_build_openai_body($model, $messages, $system_prompt, $stream = false) {
         $msgs = array();
         if (is_string($system_prompt) && $system_prompt !== '') {
             $msgs[] = array('role' => 'system', 'content' => $system_prompt);
@@ -199,7 +271,7 @@ if (!function_exists('sc_llm_build_openai_body')) {
             'model'      => (string)$model,
             'messages'   => $msgs,
             'max_tokens' => 1024,
-            'stream'     => false,
+            'stream'     => (bool)$stream,
         );
     }
 }
@@ -214,9 +286,10 @@ if (!function_exists('sc_llm_build_anthropic_body')) {
      * @param string $model        Model id.
      * @param array  $messages     List of array('role' => ..., 'content' => ...).
      * @param string $system_prompt Optional system prompt.
+     * @param bool   $stream       Whether to stream the response.
      * @return array Body array.
      */
-    function sc_llm_build_anthropic_body($model, $messages, $system_prompt) {
+    function sc_llm_build_anthropic_body($model, $messages, $system_prompt, $stream = false) {
         $msgs = array();
         if (is_array($messages)) {
             foreach ($messages as $m) {
@@ -232,7 +305,7 @@ if (!function_exists('sc_llm_build_anthropic_body')) {
             'model'      => (string)$model,
             'messages'   => $msgs,
             'max_tokens' => 1024,
-            'stream'     => false,
+            'stream'     => (bool)$stream,
         );
         if (is_string($system_prompt) && $system_prompt !== '') {
             $body['system'] = $system_prompt;
@@ -374,7 +447,7 @@ if (!function_exists('sc_llm_openai')) {
         if ($api_key === '' || $model === '') {
             return array('ok' => false, 'error' => 'missing_provider_fields');
         }
-        $body = sc_llm_build_openai_body($model, $messages, $system_prompt);
+        $body = sc_llm_build_openai_body($model, $messages, $system_prompt, $stream_callback !== null);
         if (empty($body['messages'])) {
             return array('ok' => false, 'error' => 'empty_messages');
         }
@@ -386,8 +459,13 @@ if (!function_exists('sc_llm_openai')) {
             'Content-Type: application/json',
             'Authorization: Bearer ' . $api_key,
         );
+        $raw_cb = null;
+        if ($stream_callback !== null) {
+            $parser = new SC_SseStreamParser($stream_callback, 'openai');
+            $raw_cb = array($parser, 'feed');
+        }
         $resp = sc_llm_send_via_tunnel(
-            $provider_config, 'POST', '/chat/completions', $headers, $json
+            $provider_config, 'POST', '/chat/completions', $headers, $json, $raw_cb
         );
         if (!is_array($resp) || isset($resp['error'])) {
             $err = isset($resp['error']) ? $resp['error'] : 'unknown';
@@ -415,7 +493,7 @@ if (!function_exists('sc_llm_anthropic')) {
         if ($api_key === '' || $model === '') {
             return array('ok' => false, 'error' => 'missing_provider_fields');
         }
-        $body = sc_llm_build_anthropic_body($model, $messages, $system_prompt);
+        $body = sc_llm_build_anthropic_body($model, $messages, $system_prompt, $stream_callback !== null);
         if (empty($body['messages'])) {
             return array('ok' => false, 'error' => 'empty_messages');
         }
@@ -428,8 +506,13 @@ if (!function_exists('sc_llm_anthropic')) {
             'x-api-key: ' . $api_key,
             'anthropic-version: 2023-06-01',
         );
+        $raw_cb = null;
+        if ($stream_callback !== null) {
+            $parser = new SC_SseStreamParser($stream_callback, 'anthropic');
+            $raw_cb = array($parser, 'feed');
+        }
         $resp = sc_llm_send_via_tunnel(
-            $provider_config, 'POST', '/messages', $headers, $json
+            $provider_config, 'POST', '/messages', $headers, $json, $raw_cb
         );
         if (!is_array($resp) || isset($resp['error'])) {
             $err = isset($resp['error']) ? $resp['error'] : 'unknown';

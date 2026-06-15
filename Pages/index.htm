@@ -13,7 +13,7 @@
 <div class="wrap">
   <div class="header">
     <div class="header-logo">
-      <img src="../Assets/logo.png" alt="stoneChat" width="24" height="24" />
+      <img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />
       <span id="logo-text">stoneChat</span>
     </div>
     <div class="lang-switcher" id="lang-switcher"></div>
@@ -21,6 +21,10 @@
   </div>
 </div>
 <div class="login-wrap">
+  <div class="login-logo-container">
+    <img src="../Assets/logo_wide.png" alt="stoneChat" class="login-large-logo" />
+    <div class="login-logo-title" id="logo-text-large" style="display:none;">stoneChat</div>
+  </div>
   <h1 data-i18n="login.title">Login</h1>
   <form id="login-form" action="#" method="post" onsubmit="return scLoginSubmit(this);">
     <label for="password" data-i18n="login.password">Password</label>
@@ -33,7 +37,7 @@
 </div>
 <div class="wrap">
   <div class="center spacer">
-    <a href="javascript:void(0)" data-i18n="chat.about">About</a>
+    <a href="javascript:void(0)" onclick="alert('stoneChat v1\n\nProtocol: stoneChat v1 (HTTP+JSON, file-based HISTORY/)\nAuthor: stoneChat project\nGitHub: https://github.com/waterrun/stoneChat');" data-i18n="chat.about">About</a>
   </div>
 </div>
 <script type="text/javascript">
@@ -88,11 +92,13 @@ function scLoginInit() {
   document.title = pageTitle;
   var logoEl = document.getElementById('logo-text');
   if (logoEl) {
-    if (typeof logoEl.textContent === 'string') {
-      logoEl.textContent = pageTitle;
-    } else {
-      logoEl.innerText = pageTitle;
-    }
+    if (typeof logoEl.textContent === 'string') { logoEl.textContent = pageTitle; }
+    else { logoEl.innerText = pageTitle; }
+  }
+  var logoElLarge = document.getElementById('logo-text-large');
+  if (logoElLarge) {
+    if (typeof logoElLarge.textContent === 'string') { logoElLarge.textContent = pageTitle; }
+    else { logoElLarge.innerText = pageTitle; }
   }
 
   if (i18n && typeof i18n.init === 'function') {

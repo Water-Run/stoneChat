@@ -273,13 +273,189 @@
             && 'ok' in parsed) {
             return {
                 ok: parsed.ok === true,
-                data: 'data' in parsed ? parsed.data : null,
+                data: 'data' in parsed ? parsed.data : parsed,
                 error: 'error' in parsed && parsed.error !== null
                        && parsed.error !== undefined
                        ? String(parsed.error) : ''
             };
         }
         return { ok: true, data: parsed, error: '' };
+    }
+
+    function sc_request_async(method, endpoint, body, onChunk, onComplete) {
+        var xhr = sc_createXhr();
+        if (!xhr) {
+            if (typeof onComplete === 'function') {
+                onComplete({ ok: false, data: null, error: 'xhr_unavailable' });
+            }
+            return null;
+        }
+
+        var url = SC_API_BASE + endpoint;
+        var hasBody = body !== null && body !== undefined;
+        var payload = hasBody ? sc_jsonStringify(body) : null;
+
+        try {
+            xhr.open(method, url, true); // true = asynchronous
+        } catch (e) {
+            if (typeof onComplete === 'function') {
+                onComplete({ ok: false, data: null, error: 'open_failed:' + (e.message || e) });
+            }
+            return null;
+        }
+
+        try {
+            xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.setRequestHeader('Accept', 'text/event-stream, application/json');
+        } catch (e) {
+            // ignore
+        }
+
+        var lastLength = 0;
+        var timedOut = false;
+        var sseBuffer = '';
+        var isEventStream = false;
+        var lastEventData = null;
+        
+        var timer = window.setTimeout(function () {
+            timedOut = true;
+            try { xhr.abort(); } catch (e) { /* ignore */ }
+        }, SC_TIMEOUT_MS);
+
+        xhr.onreadystatechange = function () {
+            if (timedOut) { return; }
+            
+            var state = 0;
+            try { state = xhr.readyState; } catch (e) { return; }
+            
+            if (state === 3 || state === 4) {
+                if (!isEventStream) {
+                    var ct = '';
+                    try { ct = xhr.getResponseHeader('Content-Type') || ''; } catch (e) {}
+                    if (ct.indexOf('text/event-stream') !== -1) {
+                        isEventStream = true;
+                    }
+                }
+                
+                var text = '';
+                try { text = xhr.responseText || ''; } catch (e) { /* ignore */ }
+                
+                if (text.length > lastLength) {
+                    var newText = text.substring(lastLength);
+                    lastLength = text.length;
+                    
+                    if (isEventStream) {
+                        sseBuffer += newText;
+                        while (true) {
+                            var pos = sseBuffer.indexOf('\n');
+                            if (pos === -1) { break; }
+                            var line = sseBuffer.substring(0, pos);
+                            sseBuffer = sseBuffer.substring(pos + 1);
+                            
+                            line = line.replace(/^\s+|\s+$/g, ''); // trim
+                            if (line.indexOf('data:') === 0) {
+                                var dataVal = line.substring(5);
+                                dataVal = dataVal.replace(/^\s+|\s+$/g, ''); // trim
+                                if (dataVal === '[DONE]') {
+                                    continue;
+                                }
+                                var parsedData = sc_jsonParse(dataVal);
+                                if (parsedData && typeof parsedData === 'object' && !('__sc_parse_error' in parsedData)) {
+                                    if (parsedData.done) {
+                                        lastEventData = parsedData;
+                                    }
+                                    var contentChunk = parsedData.content || parsedData.assistant || '';
+                                    if (contentChunk !== '' && typeof onChunk === 'function') {
+                                        onChunk(contentChunk);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (state === 4) {
+                window.clearTimeout(timer);
+                
+                var status = 0;
+                try { status = xhr.status; } catch (e) { /* ignore */ }
+                
+                var finalText = '';
+                try { finalText = xhr.responseText || ''; } catch (e) { /* ignore */ }
+                
+                if (status === 0) {
+                    if (typeof onComplete === 'function') {
+                        onComplete({ ok: false, data: null, error: 'network_error' });
+                    }
+                    return;
+                }
+                
+                if (status < 200 || status >= 300) {
+                    var snippet = finalText.length > 200 ? finalText.substring(0, 200) : finalText;
+                    if (typeof onComplete === 'function') {
+                        onComplete({ ok: false, data: null, error: 'http_' + status + ':' + snippet });
+                    }
+                    return;
+                }
+                
+                var parsed = null;
+                var contentType = '';
+                try { contentType = xhr.getResponseHeader('Content-Type') || ''; } catch (e) { /* ignore */ }
+                
+                if (contentType.indexOf('application/json') !== -1 && finalText.length > 0) {
+                    var result = sc_jsonParse(finalText);
+                    if (result && typeof result === 'object' && '__sc_parse_error' in result) {
+                        if (typeof onComplete === 'function') {
+                            onComplete({ ok: false, data: null, error: 'invalid_json:' + result.__sc_parse_error });
+                        }
+                        return;
+                    }
+                    parsed = result;
+                }
+                
+                if (typeof onComplete === 'function') {
+                    if (parsed !== null && typeof parsed === 'object' && 'ok' in parsed) {
+                        onComplete({
+                            ok: parsed.ok === true,
+                            data: 'data' in parsed ? parsed.data : parsed,
+                            error: 'error' in parsed && parsed.error !== null && parsed.error !== undefined ? String(parsed.error) : ''
+                        });
+                    } else {
+                        // For event streams, at the end we might get the closing DONE event which contains metadata like chat_name.
+                        // We check if we can parse the last sse lines for done metadata.
+                        var lastDoneMeta = null;
+                        if (isEventStream && sseBuffer.length > 0) {
+                            var lines = sseBuffer.split('\n');
+                            for (var i = 0; i < lines.length; i++) {
+                                var l = lines[i].replace(/^\s+|\s+$/g, '');
+                                if (l.indexOf('data:') === 0) {
+                                    var dVal = l.substring(5).replace(/^\s+|\s+$/g, '');
+                                    var pVal = sc_jsonParse(dVal);
+                                    if (pVal && typeof pVal === 'object' && pVal.done) {
+                                        lastDoneMeta = pVal;
+                                    }
+                                }
+                            }
+                        }
+                        onComplete({ ok: true, data: lastEventData || lastDoneMeta || parsed || finalText, error: '' });
+                    }
+                }
+            }
+        };
+
+        try {
+            xhr.send(payload);
+        } catch (e) {
+            window.clearTimeout(timer);
+            if (typeof onComplete === 'function') {
+                onComplete({ ok: false, data: null, error: 'send_failed:' + (e.message || e) });
+            }
+            return null;
+        }
+
+        return xhr;
     }
 
     /* ------------------------------------------------------------------
@@ -309,10 +485,10 @@
                               { action: 'new', provider_id: providerId });
         },
 
-        // DELETE /Server/api/history.php with {id} in the body
+        // DELETE /Server/api/history.php?id=<chatId>
         //   chatId - conversation id to remove (Recycle Bin on Windows)
         deleteChat: function (chatId) {
-            return sc_request('DELETE', 'history.php', { id: chatId });
+            return sc_request('DELETE', 'history.php?id=' + chatId, null);
         },
 
         // POST /Server/api/history.php action=rename
@@ -323,26 +499,50 @@
                               { action: 'rename', id: chatId, title: newName });
         },
 
+        // GET /Server/api/history.php?id=<chatId>  - load one conversation
+        getChat: function (chatId) {
+            return sc_request('GET', 'history.php?id=' + chatId, null);
+        },
+
         // POST /Server/api/chat.php  - send a user message (non-streaming)
         //   chatId  - conversation id
         //   message - user message text
         sendMessage: function (chatId, message) {
             return sc_request('POST', 'chat.php',
-                              { conversation_id: chatId, message: message });
+                               { action: 'send', conversation_id: chatId, message: message });
+        },
+
+        // POST /Server/api/chat.php action=regenerate
+        //   chatId  - conversation id
+        regenerateChat: function (chatId) {
+            return sc_request('POST', 'chat.php',
+                               { action: 'regenerate', chat_id: chatId });
+        },
+
+        sendMessageStream: function (chatId, message, onChunk, onComplete) {
+            return sc_request_async('POST', 'chat.php',
+                               { action: 'send', conversation_id: chatId, message: message },
+                               onChunk, onComplete);
+        },
+
+        regenerateChatStream: function (chatId, onChunk, onComplete) {
+            return sc_request_async('POST', 'chat.php',
+                               { action: 'regenerate', chat_id: chatId },
+                               onChunk, onComplete);
         },
 
         // POST /Server/api/chat.php action=test  - probe provider reachability
         //   providerId - id of the [Provider N] to test
         connectCheck: function (providerId) {
             return sc_request('POST', 'chat.php',
-                              { action: 'test', provider_id: providerId });
+                               { action: 'test', provider_id: providerId });
         },
 
         // POST /Server/api/auth.php action=login
         //   password - plaintext password (HTTPS / LAN deployment)
         login: function (password) {
             return sc_request('POST', 'auth.php',
-                              { action: 'login', password: password });
+                               { action: 'login', password: password });
         },
 
         // POST /Server/api/auth.php action=logout

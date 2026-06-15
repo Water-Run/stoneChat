@@ -49,18 +49,25 @@
 
   /* ----- English fallback (always available) ----- */
   var FALLBACK_EN = {
+    'app.title': 'stoneChat',
     'login.title': 'Login',
     'login.password': 'Password',
     'login.submit': 'Sign in',
     'login.error': 'Invalid password',
     'chat.send': 'Send',
+    'chat.stop': 'Stop',
+    'chat.regenerate': 'Regenerate',
     'chat.countdown': 'Auto-retry in {n}s...',
     'chat.connectCheck': 'Check connection',
     'chat.reloadConfig': 'Reload config',
+    'chat.editConfig': 'Edit config',
+    'chat.logout': 'Logout',
     'chat.about': 'About',
     'chat.newChat': 'New chat',
     'chat.deleteChat': 'Delete chat',
     'chat.renameChat': 'Rename chat',
+    'sidebar.history': 'History',
+    'common.close': 'Close',
     'error.network': 'Network error',
     'error.timeout': 'Request timeout',
     'error.unauthorized': 'Unauthorized'
@@ -69,35 +76,49 @@
   /* ----- Bundled translations (front-end fallback, no backend injection) ----- */
   var BUNDLED = {
     'zh-CN': {
+      'app.title': 'stoneChat',
       'login.title': '\u767b\u5f55',
       'login.password': '\u5bc6\u7801',
       'login.submit': '\u767b\u5f55',
       'login.error': '\u5bc6\u7801\u9519\u8bef',
       'chat.send': '\u53d1\u9001',
+      'chat.stop': '\u505c\u6b62',
+      'chat.regenerate': '\u91cd\u65b0\u751f\u6210',
       'chat.countdown': '{n} \u79d2\u540e\u81ea\u52a8\u91cd\u8bd5...',
       'chat.connectCheck': '\u68c0\u67e5\u8fde\u63a5',
       'chat.reloadConfig': '\u91cd\u65b0\u52a0\u8f7d\u914d\u7f6e',
+      'chat.editConfig': '\u7f16\u8f91\u914d\u7f6e',
+      'chat.logout': '\u9000\u51fa',
       'chat.about': '\u5173\u4e8e',
       'chat.newChat': '\u65b0\u5efa\u5bf9\u8bdd',
       'chat.deleteChat': '\u5220\u9664\u5bf9\u8bdd',
       'chat.renameChat': '\u91cd\u547d\u540d\u5bf9\u8bdd',
+      'sidebar.history': '\u5386\u53f2\u8bb0\u5f55',
+      'common.close': '\u5173\u95ed',
       'error.network': '\u7f51\u7edc\u9519\u8bef',
       'error.timeout': '\u8bf7\u6c42\u8d85\u65f6',
       'error.unauthorized': '\u672a\u6388\u6743'
     },
     'zh-TW': {
+      'app.title': 'stoneChat',
       'login.title': '\u767b\u5165',
       'login.password': '\u5bc6\u78bc',
       'login.submit': '\u767b\u5165',
       'login.error': '\u5bc6\u78bc\u932f\u8aa4',
       'chat.send': '\u50b3\u9001',
+      'chat.stop': '\u505c\u6b62',
+      'chat.regenerate': '\u91cd\u65b0\u751f\u6210',
       'chat.countdown': '{n} \u79d2\u5f8c\u81ea\u52d5\u91cd\u8a66...',
       'chat.connectCheck': '\u6aa2\u67e5\u9023\u7dda',
       'chat.reloadConfig': '\u91cd\u65b0\u8f09\u5165\u8a2d\u5b9a',
+      'chat.editConfig': '\u7de8\u8f2f\u8a2d\u5b9a',
+      'chat.logout': '\u767b\u51fa',
       'chat.about': '\u95dc\u65bc',
       'chat.newChat': '\u65b0\u589e\u5c0d\u8a71',
       'chat.deleteChat': '\u522a\u9664\u5c0d\u8a71',
       'chat.renameChat': '\u91cd\u65b0\u547d\u540d\u5c0d\u8a71',
+      'sidebar.history': '\u6b77\u53f2\u8a18\u9304',
+      'common.close': '\u95dc\u9589',
       'error.network': '\u7db2\u8def\u932f\u8aa4',
       'error.timeout': '\u8acb\u6c42\u903e\u6642',
       'error.unauthorized': '\u672a\u6388\u6b0a'
@@ -200,7 +221,7 @@
   var defaultLang = 'en';
   var currentLang = 'en';
   var table = {};
-  var tableCache = { 'en': FALLBACK_EN };
+  var tableCache = {};
 
   /* ----- Merge FALLBACK_EN into target table (so missing keys still work) ----- */
   function mergeFallback(src) {
@@ -260,13 +281,13 @@
   /* ----- Public: load(lang) - returns translation table ----- */
   function load(lang) {
     if (tableCache[lang]) return tableCache[lang];
-    if (BUNDLED[lang]) {
-      tableCache[lang] = mergeFallback(BUNDLED[lang]);
-      return tableCache[lang];
-    }
     var remote = fetchRemote(lang);
     if (remote) {
       tableCache[lang] = mergeFallback(remote);
+      return tableCache[lang];
+    }
+    if (BUNDLED[lang]) {
+      tableCache[lang] = mergeFallback(BUNDLED[lang]);
       return tableCache[lang];
     }
     tableCache[lang] = FALLBACK_EN;
@@ -325,7 +346,7 @@
     for (var i = 0; i < supportedLangs.length; i++) {
       var lang = supportedLangs[i];
       var label = LANG_LABELS[lang] || lang;
-      var active = (lang === currentLang) ? ' class="sc-active"' : '';
+      var active = (lang === currentLang) ? ' class="lang-active"' : '';
       html += '<a href="javascript:window.SC.I18n.setLang(\'' + lang +
         '\')"' + active + '>' + label + '</a> ';
     }

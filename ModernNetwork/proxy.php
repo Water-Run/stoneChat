@@ -345,20 +345,71 @@ if (!function_exists('sc_ensure_tunnel')) {
     }
 }
 
+if (!class_exists('SC_ChunkedParser')) {
+    /**
+     * Chunked response parser.
+     * Parses chunked transfer encoding stream in real-time.
+     */
+    class SC_ChunkedParser {
+        private $buffer = '';
+        private $state = 0; // 0 = reading size, 1 = reading data
+        private $chunk_size = 0;
+        
+        public function feed($data, $callback) {
+            $this->buffer .= $data;
+            while (true) {
+                if ($this->state === 0) {
+                    $pos = strpos($this->buffer, "\r\n");
+                    if ($pos === false) {
+                        break;
+                    }
+                    $line = substr($this->buffer, 0, $pos);
+                    $semi = strpos($line, ';');
+                    if ($semi !== false) {
+                        $line = substr($line, 0, $semi);
+                    }
+                    $line = trim($line);
+                    if ($line === '') {
+                        $this->buffer = substr($this->buffer, $pos + 2);
+                        continue;
+                    }
+                    $this->chunk_size = hexdec($line);
+                    $this->buffer = substr($this->buffer, $pos + 2);
+                    $this->state = 1;
+                }
+                if ($this->state === 1) {
+                    if (strlen($this->buffer) < $this->chunk_size + 2) {
+                        break;
+                    }
+                    $chunk_data = substr($this->buffer, 0, $this->chunk_size);
+                    $this->buffer = substr($this->buffer, $this->chunk_size + 2);
+                    $this->state = 0;
+                    if ($this->chunk_size > 0) {
+                        call_user_func($callback, $chunk_data);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 if (!function_exists('sc_http_send_raw')) {
     /**
      * Send a raw HTTP request over a TCP socket and read the full response.
      *
-     * @param int    $port     Local port (stunnel listens here).
-     * @param string $method   HTTP method (GET, POST, etc.).
-     * @param string $host     Host header value.
-     * @param string $path     Request path.
-     * @param array  $headers  Extra headers (each a full header line, without trailing CRLF).
-     * @param string $body     Request body (empty string for none).
-     * @param int    $timeout  Read/write timeout in seconds.
+     * @param int      $port             Local port (stunnel listens here).
+     * @param string   $method           HTTP method (GET, POST, etc.).
+     * @param string   $host             Host header value.
+     * @param string   $path             Request path.
+     * @param array    $headers          Extra headers (each a full header line, without trailing CRLF).
+     * @param string   $body             Request body (empty string for none).
+     * @param int      $timeout          Read/write timeout in seconds.
+     * @param callback $stream_callback  Optional callback for real-time streaming chunks.
      * @return array array('status' => int, 'headers' => array, 'body' => string) or array('error' => string)
      */
-    function sc_http_send_raw($port, $method, $host, $path, $headers, $body, $timeout) {
+    function sc_http_send_raw($port, $method, $host, $path, $headers, $body, $timeout, $stream_callback = null) {
         $errno = 0;
         $errstr = '';
         $fp = @fsockopen('127.0.0.1', (int)$port, $errno, $errstr, (int)$timeout);
@@ -383,12 +434,55 @@ if (!function_exists('sc_http_send_raw')) {
         }
         // Read response.
         $raw = '';
+        $header_end = false;
+        $headers_str = '';
+        $body_buffered = '';
+        
+        $is_chunked = false;
+        $chunked_parser = null;
+        
         while (!@feof($fp)) {
+            if (function_exists('connection_aborted') && connection_aborted()) {
+                break;
+            }
             $chunk = @fread($fp, 8192);
             if ($chunk === false || $chunk === '') {
                 break;
             }
-            $raw .= $chunk;
+            
+            if (!$header_end) {
+                $raw .= $chunk;
+                $pos = strpos($raw, "\r\n\r\n");
+                if ($pos !== false) {
+                    $header_end = true;
+                    $headers_str = substr($raw, 0, $pos);
+                    $body_buffered = substr($raw, $pos + 4);
+                    
+                    if (stripos($headers_str, 'Transfer-Encoding: chunked') !== false) {
+                        $is_chunked = true;
+                        $chunked_parser = new SC_ChunkedParser();
+                    }
+                    
+                    if ($stream_callback !== null) {
+                        if ($is_chunked) {
+                            $chunked_parser->feed($body_buffered, $stream_callback);
+                        } else {
+                            if (strlen($body_buffered) > 0) {
+                                call_user_func($stream_callback, $body_buffered);
+                            }
+                        }
+                    }
+                }
+            } else {
+                if ($stream_callback !== null) {
+                    if ($is_chunked) {
+                        $chunked_parser->feed($chunk, $stream_callback);
+                    } else {
+                        call_user_func($stream_callback, $chunk);
+                    }
+                }
+                $raw .= $chunk;
+            }
         }
         @fclose($fp);
         // Parse status line.

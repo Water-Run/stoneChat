@@ -315,7 +315,7 @@
     function sc_extractReply(data) {
         var reply = '';
         if (data && typeof data === 'object') {
-            reply = data.reply || data.message || data.content || '';
+            reply = data.reply || data.message || data.content || data.assistant || '';
         } else if (typeof data === 'string') {
             reply = data;
         }
@@ -339,7 +339,7 @@
         }
         if (state.isStreaming) { return { ok: false, error: 'busy' }; }
         if (!window.SC || !window.SC.Api
-            || typeof window.SC.Api.sendMessage !== 'function') {
+            || typeof window.SC.Api.sendMessageStream !== 'function') {
             return { ok: false, error: 'api_unavailable' };
         }
 
@@ -347,29 +347,69 @@
         state.lastUserMessage = text;
         state.lastAssistantNode = null;
 
-        // Render the user bubble first so latency feels lower.
         sc_renderMessage('user', text, new Date());
         sc_setStreaming(true);
         sc_startCountdown();
+        sc_resetInput();
 
-        var result;
-        try {
-            result = window.SC.Api.sendMessage(chatId, text);
-        } catch (e) {
-            result = { ok: false, error: 'exception:' + (e.message || e) };
-        }
-        sc_stopCountdown();
-        sc_setStreaming(false);
+        var assistantNode = sc_renderMessage('assistant', '', new Date());
+        var bodyNode = assistantNode.getElementsByTagName('div')[0]
+                    || assistantNode.lastChild;
 
-        if (result && result.ok === true) {
-            sc_renderMessage('assistant', sc_extractReply(result.data),
-                new Date());
-            sc_resetInput();
-        } else {
-            var errMsg = (result && result.error) || 'unknown_error';
-            sc_renderMessage('assistant', '[Error] ' + errMsg, new Date());
-        }
-        return result;
+        var xhr = window.SC.Api.sendMessageStream(chatId, text,
+            function (chunk) {
+                if (typeof bodyNode.textContent === 'string') {
+                    bodyNode.textContent += chunk;
+                } else {
+                    bodyNode.innerText += chunk;
+                }
+                sc_scrollToBottom();
+            },
+            function (result) {
+                sc_stopCountdown();
+                sc_setStreaming(false);
+                state.activeXhr = null;
+
+                if (result && result.ok === true) {
+                    if (result.data && result.data.chat_name && window.SC && window.SC.App && typeof window.SC.App.renderHistoryList === 'function') {
+                        try {
+                            var h = window.SC.Api.getHistory();
+                            var rows = (h && h.ok && h.data && h.data.conversations)
+                                     ? h.data.conversations : [];
+                            window.SC.App.renderHistoryList(rows);
+                            var list = document.getElementById('sc-history-list');
+                            if (list && state.lastChatId) {
+                                var items = list.getElementsByTagName('li');
+                                for (var i = 0; i < items.length; i++) {
+                                    var item = items[i];
+                                    if (item.getAttribute('data-id') === state.lastChatId) {
+                                        item.className = 'history-active';
+                                    }
+                                }
+                            }
+                        } catch (err) { /* ignore */ }
+                    }
+                } else {
+                    var errMsg = (result && result.error) || 'unknown_error';
+                    if (errMsg === 'abort' || (xhr && xhr.status === 0)) {
+                        errMsg = 'Connection interrupted. Streaming has been stopped.';
+                        if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
+                            errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
+                        }
+                    } else {
+                        errMsg = '[Error] ' + errMsg;
+                    }
+                    if (typeof bodyNode.textContent === 'string') {
+                        bodyNode.textContent += ' ' + errMsg;
+                    } else {
+                        bodyNode.innerText += ' ' + errMsg;
+                    }
+                }
+            }
+        );
+
+        state.activeXhr = xhr;
+        return { ok: true };
     }
 
     /* ------------------------------------------------------------------
@@ -390,10 +430,72 @@
      * ------------------------------------------------------------------ */
 
     function sc_regenerate() {
-        if (!state.lastUserMessage || !state.lastChatId) {
-            return { ok: false, error: 'no_last_message' };
+        if (!state.lastChatId) {
+            return { ok: false, error: 'no_last_chat' };
         }
-        return sc_sendMessage(state.lastChatId, state.lastUserMessage);
+        if (state.isStreaming) { return { ok: false, error: 'busy' }; }
+        if (!window.SC || !window.SC.Api
+            || typeof window.SC.Api.regenerateChatStream !== 'function') {
+            return { ok: false, error: 'api_unavailable' };
+        }
+
+        var container = sc_findMessagesContainer();
+        if (container) {
+            var child = container.lastChild;
+            while (child) {
+                if (child.nodeType === 1 && child.className && child.className.indexOf('assistant-message') !== -1) {
+                    container.removeChild(child);
+                    break;
+                }
+                child = child.previousSibling;
+            }
+        }
+        state.lastAssistantNode = null;
+
+        sc_setStreaming(true);
+        sc_startCountdown();
+
+        var assistantNode = sc_renderMessage('assistant', '', new Date());
+        var bodyNode = assistantNode.getElementsByTagName('div')[0]
+                    || assistantNode.lastChild;
+
+        var xhr = window.SC.Api.regenerateChatStream(state.lastChatId,
+            function (chunk) {
+                if (typeof bodyNode.textContent === 'string') {
+                    bodyNode.textContent += chunk;
+                } else {
+                    bodyNode.innerText += chunk;
+                }
+                sc_scrollToBottom();
+            },
+            function (result) {
+                sc_stopCountdown();
+                sc_setStreaming(false);
+                state.activeXhr = null;
+
+                if (result && result.ok === true) {
+                    // Done
+                } else {
+                    var errMsg = (result && result.error) || 'unknown_error';
+                    if (errMsg === 'abort' || (xhr && xhr.status === 0)) {
+                        errMsg = 'Connection interrupted. Streaming has been stopped.';
+                        if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
+                            errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
+                        }
+                    } else {
+                        errMsg = '[Error] ' + errMsg;
+                    }
+                    if (typeof bodyNode.textContent === 'string') {
+                        bodyNode.textContent += ' ' + errMsg;
+                    } else {
+                        bodyNode.innerText += ' ' + errMsg;
+                    }
+                }
+            }
+        );
+
+        state.activeXhr = xhr;
+        return { ok: true };
     }
 
     /* ------------------------------------------------------------------
@@ -429,6 +531,10 @@
 
     function sc_setActiveChatId(chatId) {
         state.lastChatId = chatId;
+    }
+
+    function sc_getActiveChatId() {
+        return state.lastChatId;
     }
 
     /* ------------------------------------------------------------------
@@ -567,7 +673,8 @@
         scrollToBottom: sc_scrollToBottom,
         clearMessages: sc_clearMessages,
         deleteConversation: sc_deleteConversation,
-        setActiveChatId: sc_setActiveChatId
+        setActiveChatId: sc_setActiveChatId,
+        getActiveChatId: sc_getActiveChatId
     };
 
     window.SC.Chat = SC_Chat;

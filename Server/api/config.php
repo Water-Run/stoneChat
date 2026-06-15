@@ -251,7 +251,7 @@ if (!function_exists('sc_api_config_dispatch')) {
                     }
                 }
             }
-            if ($action === 'reload_config') {
+            if ($action === 'reload_config' || $action === 'reload') {
                 return sc_api_config_reload();
             }
             return array('ok' => false, 'error' => 'unknown_action');

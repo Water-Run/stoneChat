@@ -97,30 +97,32 @@ li {
  * Header bar (logo + lang switcher + title)
  * ------------------------------------------------------------------------- */
 .header {
-  width: 760px;
+  width: 734px;
   background: #ffffff;
   border: 1px solid #888;
-  padding: 6px 8px;
-  margin: 0 0 6px 0;
+  padding: 10px 12px;
+  margin: 0 0 8px 0;
   overflow: hidden;
 }
 
 .header-logo {
   float: left;
-  font-size: 18px;
+  font-size: 26px;
   font-weight: bold;
   color: #333;
+  line-height: 48px;
 }
 
 .header-logo img {
   vertical-align: middle;
-  margin-right: 4px;
+  margin-right: 8px;
 }
 
 .lang-switcher {
   float: right;
   font-size: 11px;
   color: #666;
+  margin-top: 12px;
 }
 
 .lang-switcher a {
@@ -152,7 +154,7 @@ li {
 
 .sidebar {
   float: left;
-  width: 180px;
+  width: 160px;
   background: #ffffff;
   border: 1px solid #888;
   margin: 0 6px 0 0;
@@ -161,7 +163,7 @@ li {
 
 .main-content {
   float: right;
-  width: 568px;
+  width: 574px;
   background: #ffffff;
   border: 1px solid #888;
   padding: 4px;
@@ -659,4 +661,23 @@ select {
 .spacer {
   height: 8px;
   line-height: 8px;
+}
+
+/* Centered large login logo styles */
+.login-logo-container {
+  text-align: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #888;
+}
+.login-large-logo {
+  width: 240px;
+  height: 87px;
+  display: block;
+  margin: 0 auto 10px auto;
+}
+.login-logo-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #003366;
 }

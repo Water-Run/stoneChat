@@ -349,18 +349,7 @@
         currentChats = rows;
         renderHistoryList(rows);
 
-        // Hand the new id to chat.js (best-effort - chat.js may not be
-        // loaded yet on a freshly-served page).
-        if (typeof SC.Chat !== 'undefined'
-            && SC.Chat
-            && typeof SC.Chat.setActiveChatId === 'function') {
-            try { SC.Chat.setActiveChatId(newId); } catch (e) { /* ignore */ }
-        }
-        if (typeof SC.Chat !== 'undefined'
-            && SC.Chat
-            && typeof SC.Chat.clearMessages === 'function') {
-            try { SC.Chat.clearMessages(); } catch (e) { /* ignore */ }
-        }
+        loadChat(newId);
     }
 
     // -------------------------------------------------------------------------
@@ -405,6 +394,10 @@
                    + 'On Windows it will be moved to the Recycle Bin.')) {
             return;
         }
+        var isActive = false;
+        if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.getActiveChatId === 'function') {
+            isActive = (SC.Chat.getActiveChatId() === chatId);
+        }
         var resp = SC.Api.deleteChat(chatId);
         if (!resp || !resp.ok) {
             alert('Delete failed: '
@@ -416,6 +409,36 @@
                  ? h.data.conversations : [];
         currentChats = rows;
         renderHistoryList(rows);
+
+        if (isActive) {
+            if (rows.length > 0) {
+                loadChat(rows[0].id);
+            } else {
+                if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.clearMessages === 'function') {
+                    try { SC.Chat.clearMessages(); } catch (e) { /* ignore */ }
+                }
+                if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.setActiveChatId === 'function') {
+                    try { SC.Chat.setActiveChatId(''); } catch (e) { /* ignore */ }
+                }
+            }
+        } else {
+            var activeId = '';
+            if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.getActiveChatId === 'function') {
+                activeId = SC.Chat.getActiveChatId();
+            }
+            if (activeId) {
+                var list = $id('sc-history-list');
+                if (list) {
+                    var items = list.getElementsByTagName('li');
+                    for (var i = 0; i < items.length; i++) {
+                        var item = items[i];
+                        if (item.getAttribute('data-id') === activeId) {
+                            item.className = 'history-active';
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -474,6 +497,21 @@
     // -------------------------------------------------------------------------
     function loadChat(chatId) {
         if (!chatId) { return; }
+
+        // Highlight active chat in the sidebar.
+        var list = $id('sc-history-list');
+        if (list) {
+            var items = list.getElementsByTagName('li');
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                if (item.getAttribute('data-id') === chatId) {
+                    item.className = 'history-active';
+                } else {
+                    item.className = '';
+                }
+            }
+        }
+
         if (typeof SC.Chat !== 'undefined'
             && SC.Chat
             && typeof SC.Chat.setActiveChatId === 'function') {
@@ -483,6 +521,36 @@
             && SC.Chat
             && typeof SC.Chat.clearMessages === 'function') {
             try { SC.Chat.clearMessages(); } catch (e) { /* ignore */ }
+        }
+
+        // Load messages from server and render them.
+        if (window.SC && window.SC.Api && typeof window.SC.Api.getChat === 'function') {
+            try {
+                var resp = window.SC.Api.getChat(chatId);
+                if (resp && resp.ok && resp.data && resp.data.messages) {
+                    var messages = resp.data.messages;
+                    for (var j = 0; j < messages.length; j++) {
+                        var msg = messages[j];
+                        if (typeof SC.Chat.renderMessage === 'function') {
+                            SC.Chat.renderMessage(msg.role, msg.text, null);
+                        }
+                    }
+                    // Select model in top menu if provider_id is in meta
+                    if (resp.data.meta && resp.data.meta.provider_id) {
+                        var providersResp = window.SC.Api.getProviders();
+                        if (providersResp && providersResp.ok && providersResp.data && providersResp.data.providers) {
+                            var providers = providersResp.data.providers;
+                            for (var k = 0; k < providers.length; k++) {
+                                if (providers[k].id === resp.data.meta.provider_id) {
+                                    currentProvider = providers[k];
+                                    renderTopMenu(currentProvider);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) { /* ignore */ }
         }
     }
 
@@ -537,6 +605,10 @@
 
         // 3. History list (sidebar).
         var histResp = SC.Api.getHistory();
+        if (histResp && histResp.ok === false && histResp.error && (histResp.error.indexOf('401') >= 0 || histResp.error.indexOf('auth_required') >= 0)) {
+            window.location.href = 'index.htm';
+            return;
+        }
         if (histResp && histResp.ok
             && histResp.data && histResp.data.conversations) {
             currentChats = histResp.data.conversations;
@@ -551,8 +623,20 @@
         // 6. Render the language switcher (uses SC.I18n from i18n.js).
         renderLangSwitcher();
 
+        // 6.5. Initialize Chat UI handlers (uses SC.Chat from chat.js).
+        if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.init === 'function') {
+            var providers = (provResp && provResp.ok && provResp.data && provResp.data.providers)
+                          ? provResp.data.providers : [];
+            SC.Chat.init(currentConfig, providers);
+        }
+
         // 7. Wire persistent UI chrome (logo / sidebar / toolbar / modals).
         bindGlobalEvents();
+
+        // 8. Load the first chat on bootstrap if present.
+        if (currentChats && currentChats.length > 0) {
+            loadChat(currentChats[0].id);
+        }
     }
 
     // -------------------------------------------------------------------------
