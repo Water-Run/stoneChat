@@ -1,0 +1,841 @@
+<?php
+/**
+ * stoneChat Server /api/chat endpoint.
+ *
+ * Single-file JSON API for chat operations. Routing is body-driven via
+ * the "action" field. Every request must be POST and carry a valid
+ * sc_session cookie (validated against cfg[auth][password] in constant
+ * time).
+ *
+ * Wire format (request body, all keys action-specific):
+ *
+ *   POST action="send"           { "chat_id": "<id>",
+ *                                  "message": "<user text>",
+ *                                  "provider_id": "<optional override>" }
+ *       - loads chat history (sc_history_load_messages)
+ *       - persists the new user message
+ *       - dispatches to sc_llm_chat() with provider resolved from
+ *         explicit provider_id, then chat meta, then the first provider
+ *       - persists the assistant reply (even on partial failure of the
+ *         rest of the flow)
+ *       - on the first turn, asks the LLM for a short chat name and
+ *         writes it to meta.txt via sc_history_rename()
+ *       response: { "ok": true,  "assistant": "<text>",
+ *                   "chat_name": "<string, possibly empty>" }
+ *                or { "ok": false, "error": "<code>" }
+ *
+ *   POST action="connect_check"  { "provider_id": "<id>" }
+ *       - resolves the provider from CONF.ini
+ *       - issues a fixed "ping" chat call via sc_llm_chat()
+ *       - measures wall-clock latency; marks as "timeout:<...>" if the
+ *         provider's "timeout" field is exceeded
+ *       response: { "ok": true|false, "latency_ms": <int>,
+ *                   "error": "<code or empty>" }
+ *
+ *   POST action="regenerate"     { "chat_id": "<id>" }
+ *       - deletes the highest-indexed assistant-NNN.txt in the chat
+ *       - re-dispatches sc_llm_chat() with the remaining history
+ *       - persists the new assistant reply
+ *       response: { "ok": true,  "assistant": "<text>" }
+ *                or { "ok": false, "error": "<code>" }
+ *
+ * Common error codes: auth_required (401), method_not_allowed (405),
+ * bad_chat_id, chat_not_found, empty_message, provider_not_found,
+ * llm_unavailable, no_result, unknown, timeout[:<cause>], unknown_action.
+ *
+ * The password (or any derivative of it) is never echoed in a response.
+ * Provider secrets are never part of any response payload.
+ *
+ * Compatible with PHP 5.2 (no closures, no [] array syntax, no
+ * json_last_error, no http_response_code, function_exists guards on
+ * every helper).
+ */
+
+// ----- module includes -----
+require_once dirname(__FILE__) . '/../config.php';
+require_once dirname(__FILE__) . '/../auth.php';
+require_once dirname(__FILE__) . '/../llm.php';
+require_once dirname(__FILE__) . '/../history.php';
+require_once dirname(__FILE__) . '/../i18n.php';
+
+// =====================================================================
+// Generic HTTP / body helpers (mirror the style of api/history.php)
+// =====================================================================
+
+if (!function_exists('sc_api_chat_emit')) {
+    /**
+     * Send a JSON response with the given numeric HTTP status code
+     * and exit. Uses header() (not http_response_code, unavailable on
+     * PHP 5.2) to set the status line.
+     *
+     * @param int   $status  HTTP status code (e.g. 200, 400, 401).
+     * @param array $payload Decoded array to send (will be json_encoded).
+     */
+    function sc_api_chat_emit($status, $payload) {
+        if (!headers_sent()) {
+            $protocol = 'HTTP/1.0';
+            if (isset($_SERVER['SERVER_PROTOCOL'])
+                && is_string($_SERVER['SERVER_PROTOCOL'])
+                && $_SERVER['SERVER_PROTOCOL'] !== '') {
+                $protocol = $_SERVER['SERVER_PROTOCOL'];
+            }
+            $reason = sc_api_chat_status_reason((int)$status);
+            if ($reason !== '') {
+                header($protocol . ' ' . (int)$status . ' ' . $reason);
+            } else {
+                header($protocol . ' ' . (int)$status);
+            }
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('Pragma: no-cache');
+        }
+        $body = json_encode($payload);
+        if (!is_string($body)) {
+            $body = '{"ok":false,"error":"json_encode_failed"}';
+        }
+        echo $body;
+        exit;
+    }
+}
+
+if (!function_exists('sc_api_chat_status_reason')) {
+    /**
+     * Map numeric HTTP status to its canonical reason phrase.
+     *
+     * @param int $status HTTP status code.
+     * @return string Reason phrase, or '' if not in the table.
+     */
+    function sc_api_chat_status_reason($status) {
+        $reasons = array(
+            200 => 'OK',
+            400 => 'Bad Request',
+            401 => 'Unauthorized',
+            404 => 'Not Found',
+            405 => 'Method Not Allowed',
+            500 => 'Internal Server Error',
+        );
+        $code = (int)$status;
+        return isset($reasons[$code]) ? $reasons[$code] : '';
+    }
+}
+
+if (!function_exists('sc_api_chat_load_cfg')) {
+    /**
+     * Load CONF.ini from the project root, or return an empty array.
+     *
+     * @return array Parsed config (empty array on failure).
+     */
+    function sc_api_chat_load_cfg() {
+        $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR
+             . '..' . DIRECTORY_SEPARATOR . '..'
+             . DIRECTORY_SEPARATOR . 'CONF.ini';
+        if (is_file($ini) && is_readable($ini)
+            && function_exists('sc_load_config')) {
+            $cfg = sc_load_config($ini);
+            if (is_array($cfg)) {
+                return $cfg;
+            }
+        }
+        return array();
+    }
+}
+
+if (!function_exists('sc_api_chat_is_authorized')) {
+    /**
+     * Check that the request carries a valid sc_session cookie.
+     *
+     * The cookie value is treated as a session token and validated
+     * with sc_auth_check_password (constant-time compare against
+     * cfg[auth][password]). Empty cookies fail closed.
+     *
+     * @param array $cfg Parsed config.
+     * @return bool true iff the request is authorized.
+     */
+    function sc_api_chat_is_authorized($cfg) {
+        if (!is_array($cfg)) {
+            return false;
+        }
+        $token = '';
+        if (isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
+            $token = $_COOKIE['sc_session'];
+        }
+        if ($token === '') {
+            return false;
+        }
+        if (!function_exists('sc_auth_check_password')) {
+            return false;
+        }
+        return sc_auth_check_password($token, $cfg);
+    }
+}
+
+if (!function_exists('sc_api_chat_read_body')) {
+    /**
+     * Read the request body, accepting both JSON and form-encoded.
+     *
+     * Form-encoded is required for IE6 compatibility; JSON is the
+     * preferred format for modern clients. Whichever parses cleanly
+     * to an array is returned; an empty array means "no body".
+     *
+     * @return array Decoded body.
+     */
+    function sc_api_chat_read_body() {
+        $raw = '';
+        if (isset($_SERVER['REQUEST_METHOD'])
+            && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
+            $raw = @file_get_contents('php://input');
+        }
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+        if (isset($_POST) && is_array($_POST) && !empty($_POST)) {
+            return $_POST;
+        }
+        return array();
+    }
+}
+
+if (!function_exists('sc_api_chat_str')) {
+    /**
+     * Fetch a string field from an associative array, with fallback.
+     *
+     * @param mixed  $src     Source array (or anything else -> empty).
+     * @param string $key     Key to read.
+     * @param string $default Default when missing/non-string.
+     * @return string The string value, or $default.
+     */
+    function sc_api_chat_str($src, $key, $default) {
+        if (!is_array($src) || !isset($src[$key])) {
+            return (string)$default;
+        }
+        $v = $src[$key];
+        if (!is_string($v) && !is_numeric($v)) {
+            return (string)$default;
+        }
+        return (string)$v;
+    }
+}
+
+if (!function_exists('sc_api_chat_action')) {
+    /**
+     * Resolve the action name from the request body, lowercased.
+     *
+     * @param array $body Decoded body.
+     * @return string Action name (lowercased, trimmed) or ''.
+     */
+    function sc_api_chat_action($body) {
+        if (!is_array($body)) {
+            return '';
+        }
+        $a = '';
+        if (isset($body['action']) && is_string($body['action'])) {
+            $a = $body['action'];
+        }
+        return strtolower(trim($a));
+    }
+}
+
+if (!function_exists('sc_api_chat_chat_id')) {
+    /**
+     * Read a chat id from the body, accepting "chat_id" or "id".
+     *
+     * @param array $body Decoded body.
+     * @return string The id, or '' if neither key is present.
+     */
+    function sc_api_chat_chat_id($body) {
+        if (!is_array($body)) {
+            return '';
+        }
+        if (isset($body['chat_id']) && is_string($body['chat_id'])) {
+            return $body['chat_id'];
+        }
+        if (isset($body['id']) && (is_string($body['id']) || is_numeric($body['id']))) {
+            return (string)$body['id'];
+        }
+        return '';
+    }
+}
+
+// =====================================================================
+// Provider / history helpers
+// =====================================================================
+
+if (!function_exists('sc_api_chat_ini_path')) {
+    /**
+     * Absolute path to CONF.ini (project root, two levels up).
+     *
+     * @return string Path.
+     */
+    function sc_api_chat_ini_path() {
+        return dirname(__FILE__) . DIRECTORY_SEPARATOR
+             . '..' . DIRECTORY_SEPARATOR
+             . '..' . DIRECTORY_SEPARATOR
+             . 'CONF.ini';
+    }
+}
+
+if (!function_exists('sc_api_chat_load_providers')) {
+    /**
+     * Load the configured providers from CONF.ini as raw rows.
+     *
+     * @return array List of raw provider arrays; empty on failure.
+     */
+    function sc_api_chat_load_providers() {
+        if (!function_exists('sc_load_providers')) {
+            return array();
+        }
+        $raw = sc_load_providers(sc_api_chat_ini_path());
+        if (!is_array($raw)) {
+            return array();
+        }
+        $out = array();
+        foreach ($raw as $p) {
+            if (is_array($p)) {
+                $out[] = $p;
+            }
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('sc_api_chat_find_provider')) {
+    /**
+     * Look up a provider row by its id.
+     *
+     * @param array  $providers   List of raw provider arrays.
+     * @param string $provider_id Provider id.
+     * @return array|null         Matching row, or null if not found.
+     */
+    function sc_api_chat_find_provider($providers, $provider_id) {
+        if (!is_array($providers) || !is_string($provider_id) || $provider_id === '') {
+            return null;
+        }
+        foreach ($providers as $p) {
+            if (!is_array($p)) {
+                continue;
+            }
+            $id = isset($p['id']) ? (string)$p['id'] : '';
+            if ($id === $provider_id) {
+                return $p;
+            }
+        }
+        return null;
+    }
+}
+
+if (!function_exists('sc_api_chat_provider_timeout')) {
+    /**
+     * Read the timeout (seconds) for a provider, with a sane default.
+     *
+     * The provider's "timeout" field is the per-call latency budget.
+     * When <= 0 / missing the default is 60 seconds.
+     *
+     * @param array $provider Raw provider config.
+     * @return int            Timeout in seconds (> 0).
+     */
+    function sc_api_chat_provider_timeout($provider) {
+        if (is_array($provider) && isset($provider['timeout'])
+            && is_numeric($provider['timeout'])
+            && (int)$provider['timeout'] > 0) {
+            return (int)$provider['timeout'];
+        }
+        return 60;
+    }
+}
+
+if (!function_exists('sc_api_chat_resolve_provider')) {
+    /**
+     * Resolve the provider row to use for a given chat.
+     *
+     * Priority: explicit override (from body) > chat meta's provider_id
+     * > first configured provider.
+     *
+     * @param array  $providers   List of raw provider arrays.
+     * @param array  $cfg         Parsed config (currently unused; reserved).
+     * @param string $chat_id     Chat id (may be '' for new chats).
+     * @param string $explicit_id Explicit provider_id override (may be '').
+     * @return array|null         Resolved provider row, or null.
+     */
+    function sc_api_chat_resolve_provider($providers, $cfg, $chat_id, $explicit_id) {
+        if (is_string($explicit_id) && $explicit_id !== '') {
+            $p = sc_api_chat_find_provider($providers, $explicit_id);
+            if ($p !== null) {
+                return $p;
+            }
+        }
+        if (is_string($chat_id) && $chat_id !== ''
+            && function_exists('sc_history_load_meta')) {
+            $meta = sc_history_load_meta($chat_id);
+            if (is_array($meta) && isset($meta['provider_id'])
+                && is_string($meta['provider_id'])
+                && $meta['provider_id'] !== '') {
+                $p = sc_api_chat_find_provider($providers, $meta['provider_id']);
+                if ($p !== null) {
+                    return $p;
+                }
+            }
+        }
+        if (is_array($providers) && !empty($providers)) {
+            return $providers[0];
+        }
+        return null;
+    }
+}
+
+if (!function_exists('sc_api_chat_load_system_prompt')) {
+    /**
+     * Read the system prompt (system.txt) for a chat.
+     *
+     * @param string $chat_id Chat id.
+     * @return string System prompt, or '' on miss / error.
+     */
+    function sc_api_chat_load_system_prompt($chat_id) {
+        if (!is_string($chat_id) || $chat_id === '') {
+            return '';
+        }
+        if (!function_exists('sc_history_chat_dir')) {
+            return '';
+        }
+        $dir = sc_history_chat_dir($chat_id);
+        if ($dir === '' || !is_dir($dir)) {
+            return '';
+        }
+        $path = $dir . DIRECTORY_SEPARATOR . 'system.txt';
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+        $text = @file_get_contents($path);
+        if (!is_string($text)) {
+            return '';
+        }
+        return $text;
+    }
+}
+
+if (!function_exists('sc_api_chat_messages_to_llm')) {
+    /**
+     * Convert history messages to the shape sc_llm_chat() expects.
+     *
+     * sc_history_load_messages returns array('role'=>..,'text'=>..);
+     * sc_llm_chat expects array('role'=>..,'content'=>..). Only the
+     * user / assistant roles pass through; other entries are dropped.
+     *
+     * @param array $messages History messages.
+     * @return array          LLM-shaped messages.
+     */
+    function sc_api_chat_messages_to_llm($messages) {
+        $out = array();
+        if (!is_array($messages)) {
+            return $out;
+        }
+        foreach ($messages as $m) {
+            if (!is_array($m)) {
+                continue;
+            }
+            $role = isset($m['role']) ? (string)$m['role'] : '';
+            if ($role !== 'user' && $role !== 'assistant') {
+                continue;
+            }
+            $content = '';
+            if (isset($m['text'])) {
+                $content = (string)$m['text'];
+            } elseif (isset($m['content'])) {
+                $content = (string)$m['content'];
+            }
+            $out[] = array('role' => $role, 'content' => $content);
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('sc_api_chat_delete_last_assistant')) {
+    /**
+     * Delete the highest-indexed assistant-NNN.txt in a chat.
+     *
+     * Scans the chat directory for files matching the assistant-NNN.txt
+     * pattern with NNN in 1..999, finds the largest index, and unlinks
+     * that one file. Returns true if a file was removed.
+     *
+     * @param string $chat_id Chat id (already validated).
+     * @return bool true iff a file was deleted.
+     */
+    function sc_api_chat_delete_last_assistant($chat_id) {
+        if (!function_exists('sc_history_chat_dir')) {
+            return false;
+        }
+        $dir = sc_history_chat_dir($chat_id);
+        if ($dir === '' || !is_dir($dir)) {
+            return false;
+        }
+        $dh = @opendir($dir);
+        if ($dh === false) {
+            return false;
+        }
+        $max = 0;
+        while (($name = @readdir($dh)) !== false) {
+            if (!preg_match('/^assistant-(\d{3})\.txt$/', $name, $m)) {
+                continue;
+            }
+            $idx = (int)$m[1];
+            if ($idx < 1 || $idx > 999) {
+                continue;
+            }
+            if ($idx > $max) {
+                $max = $idx;
+            }
+        }
+        @closedir($dh);
+        if ($max < 1) {
+            return false;
+        }
+        $fname = 'assistant-' . sprintf('%03d', $max) . '.txt';
+        $path = $dir . DIRECTORY_SEPARATOR . $fname;
+        if (!is_file($path)) {
+            return false;
+        }
+        return @unlink($path);
+    }
+}
+
+if (!function_exists('sc_api_chat_check_timeout')) {
+    /**
+     * Decide whether a completed call exceeded the provider timeout.
+     *
+     * The LLM transport (sc_llm_send_via_tunnel) hard-codes its own
+     * socket-level timeout; this function is the soft label that
+     * surfaces a "timeout" error to the API caller when the wall-clock
+     * budget is exceeded.
+     *
+     * @param int   $elapsed_ms       Wall-clock elapsed milliseconds.
+     * @param int   $timeout_seconds  Provider's timeout field.
+     * @param array $result           Raw LLM result (may be empty).
+     * @return string|false           False when within budget; an error
+     *                                code ("timeout" or "timeout:...")
+     *                                when over.
+     */
+    function sc_api_chat_check_timeout($elapsed_ms, $timeout_seconds, $result) {
+        if ($timeout_seconds <= 0) {
+            return false;
+        }
+        if ($elapsed_ms <= ($timeout_seconds * 1000)) {
+            return false;
+        }
+        $err = 'timeout';
+        if (is_array($result) && isset($result['error'])
+            && (string)$result['error'] !== '') {
+            $err = 'timeout:' . (string)$result['error'];
+        }
+        return $err;
+    }
+}
+
+// =====================================================================
+// Action handlers
+// =====================================================================
+
+if (!function_exists('sc_api_chat_handle_send')) {
+    /**
+     * "send" action: persist a user turn, dispatch to LLM, persist the
+     * assistant turn, optionally auto-name the chat.
+     *
+     * Order of operations is deliberate:
+     *   1. Save the user message FIRST so even a hard crash leaves a
+     *      recoverable history (the user's words are not lost).
+     *   2. Dispatch to sc_llm_chat().
+     *   3. Save the assistant message. If the LLM call failed, the
+     *      history still records the user turn intact.
+     *   4. On the first turn, ask the LLM for a short title.
+     *
+     * @param array $cfg  Parsed config.
+     * @param array $body Decoded request body.
+     * @return array      Response payload.
+     */
+    function sc_api_chat_handle_send($cfg, $body) {
+        $chat_id = sc_api_chat_chat_id($body);
+        $message = sc_api_chat_str($body, 'message', '');
+        if ($message === '') {
+            $message = sc_api_chat_str($body, 'content', '');
+        }
+        $explicit = sc_api_chat_str($body, 'provider_id', '');
+
+        if (!function_exists('sc_history_chat_dir')
+            || sc_history_chat_dir($chat_id) === '') {
+            return array('ok' => false, 'error' => 'bad_chat_id');
+        }
+        $dir = sc_history_chat_dir($chat_id);
+        if (!is_dir($dir)) {
+            return array('ok' => false, 'error' => 'chat_not_found');
+        }
+        if ($message === '') {
+            return array('ok' => false, 'error' => 'empty_message');
+        }
+        if (!function_exists('sc_llm_chat')) {
+            return array('ok' => false, 'error' => 'llm_unavailable');
+        }
+
+        // Resolve provider (explicit > meta > first configured).
+        $providers = sc_api_chat_load_providers();
+        $provider  = sc_api_chat_resolve_provider(
+            $providers, $cfg, $chat_id, $explicit
+        );
+        if ($provider === null) {
+            return array('ok' => false, 'error' => 'provider_not_found');
+        }
+        $timeout = sc_api_chat_provider_timeout($provider);
+
+        // Load history BEFORE saving the new user message so we can
+        // detect "first turn" reliably.
+        $hist = array();
+        if (function_exists('sc_history_load_messages')) {
+            $hist = sc_history_load_messages($chat_id);
+        }
+        $is_first_turn = empty($hist);
+
+        // 1. Persist the user message (defensive: even an LLM crash
+        //    afterwards leaves the user input on disk).
+        if (function_exists('sc_history_append_message')) {
+            sc_history_append_message($chat_id, 'user', $message);
+        }
+
+        // 2. Build the LLM request and dispatch.
+        $llm_msgs  = sc_api_chat_messages_to_llm($hist);
+        $llm_msgs[] = array('role' => 'user', 'content' => $message);
+        $system    = sc_api_chat_load_system_prompt($chat_id);
+        $start     = microtime(true);
+        $result    = sc_llm_chat($provider, $llm_msgs, $system);
+        $elapsed   = (microtime(true) - $start) * 1000;
+
+        // 3. Save the assistant message (independent of the outcome).
+        $assistant = '';
+        $chat_name = '';
+        $ok_payload = false;
+        if (is_array($result)) {
+            $timeout_err = sc_api_chat_check_timeout(
+                $elapsed, $timeout, $result
+            );
+            if ($timeout_err !== false) {
+                $err = $timeout_err;
+            } elseif (empty($result['ok'])) {
+                $err = isset($result['error'])
+                    ? (string)$result['error'] : 'unknown';
+            } else {
+                $assistant = isset($result['content'])
+                    ? (string)$result['content'] : '';
+                $err = '';
+                $ok_payload = true;
+            }
+        } else {
+            $err = 'no_result';
+        }
+        if ($ok_payload && $assistant !== ''
+            && function_exists('sc_history_append_message')) {
+            sc_history_append_message($chat_id, 'assistant', $assistant);
+        }
+        if (!$ok_payload) {
+            return array('ok' => false, 'error' => $err);
+        }
+
+        // 4. First-turn auto-naming.
+        if ($is_first_turn
+            && function_exists('sc_llm_generate_chat_name')
+            && function_exists('sc_history_rename')) {
+            $name_seed = array(
+                array('role' => 'user',      'text' => $message),
+                array('role' => 'assistant', 'text' => $assistant),
+            );
+            $name = sc_llm_generate_chat_name($provider, $name_seed);
+            if (is_string($name) && $name !== '') {
+                sc_history_rename($chat_id, $name);
+                $chat_name = $name;
+            }
+        }
+        return array(
+            'ok'        => true,
+            'assistant' => $assistant,
+            'chat_name' => $chat_name,
+        );
+    }
+}
+
+if (!function_exists('sc_api_chat_handle_connect_check')) {
+    /**
+     * "connect_check" action: ping a provider with a fixed prompt.
+     *
+     * The "ping" user message is sent through sc_llm_chat(); the
+     * wall-clock latency is reported. Any failure -- missing key,
+     * bad endpoint, network error, HTTP >= 400, parse failure --
+     * becomes a non-ok row with an "error" code.
+     *
+     * @param array $cfg  Parsed config (currently unused; reserved).
+     * @param array $body Decoded request body.
+     * @return array      Response payload {ok, latency_ms, error}.
+     */
+    function sc_api_chat_handle_connect_check($cfg, $body) {
+        $provider_id = sc_api_chat_str($body, 'provider_id', '');
+        if ($provider_id === '') {
+            return array('ok' => false, 'latency_ms' => 0, 'error' => 'no_provider_id');
+        }
+        $providers = sc_api_chat_load_providers();
+        $provider  = sc_api_chat_find_provider($providers, $provider_id);
+        if ($provider === null) {
+            return array('ok' => false, 'latency_ms' => 0, 'error' => 'provider_not_found');
+        }
+        if (!function_exists('sc_llm_chat')) {
+            return array('ok' => false, 'latency_ms' => 0, 'error' => 'llm_unavailable');
+        }
+        $timeout = sc_api_chat_provider_timeout($provider);
+        $messages = array(array('role' => 'user', 'content' => 'ping'));
+        $start = microtime(true);
+        $result = sc_llm_chat($provider, $messages, '');
+        $elapsed_ms = (int)round((microtime(true) - $start) * 1000);
+
+        $timeout_err = sc_api_chat_check_timeout(
+            $elapsed_ms, $timeout, $result
+        );
+        if ($timeout_err !== false) {
+            return array(
+                'ok'         => false,
+                'latency_ms' => $elapsed_ms,
+                'error'      => $timeout_err,
+            );
+        }
+        if (!is_array($result)) {
+            return array(
+                'ok'         => false,
+                'latency_ms' => $elapsed_ms,
+                'error'      => 'no_result',
+            );
+        }
+        if (empty($result['ok'])) {
+            $err = isset($result['error'])
+                ? (string)$result['error'] : 'unknown';
+            return array(
+                'ok'         => false,
+                'latency_ms' => $elapsed_ms,
+                'error'      => $err,
+            );
+        }
+        return array(
+            'ok'         => true,
+            'latency_ms' => $elapsed_ms,
+            'error'      => '',
+        );
+    }
+}
+
+if (!function_exists('sc_api_chat_handle_regenerate')) {
+    /**
+     * "regenerate" action: re-run the LLM for the most recent user turn.
+     *
+     * The previous assistant reply is removed (the highest-indexed
+     * assistant-NNN.txt), history is reloaded, and sc_llm_chat() is
+     * called with the remaining context. The provider is resolved from
+     * the chat meta; an explicit override is not accepted here because
+     * regeneration is meant to behave like "the same conversation, one
+     * more time".
+     *
+     * @param array $cfg  Parsed config.
+     * @param array $body Decoded request body.
+     * @return array      Response payload.
+     */
+    function sc_api_chat_handle_regenerate($cfg, $body) {
+        $chat_id = sc_api_chat_chat_id($body);
+        if (!function_exists('sc_history_chat_dir')
+            || sc_history_chat_dir($chat_id) === '') {
+            return array('ok' => false, 'error' => 'bad_chat_id');
+        }
+        $dir = sc_history_chat_dir($chat_id);
+        if (!is_dir($dir)) {
+            return array('ok' => false, 'error' => 'chat_not_found');
+        }
+        if (!function_exists('sc_llm_chat')) {
+            return array('ok' => false, 'error' => 'llm_unavailable');
+        }
+
+        // Drop the last assistant message; reload history; resolve
+        // provider; dispatch; persist.
+        sc_api_chat_delete_last_assistant($chat_id);
+        $hist = array();
+        if (function_exists('sc_history_load_messages')) {
+            $hist = sc_history_load_messages($chat_id);
+        }
+        $providers = sc_api_chat_load_providers();
+        $provider  = sc_api_chat_resolve_provider(
+            $providers, $cfg, $chat_id, ''
+        );
+        if ($provider === null) {
+            return array('ok' => false, 'error' => 'provider_not_found');
+        }
+        $timeout  = sc_api_chat_provider_timeout($provider);
+        $llm_msgs = sc_api_chat_messages_to_llm($hist);
+        $system   = sc_api_chat_load_system_prompt($chat_id);
+
+        $start  = microtime(true);
+        $result = sc_llm_chat($provider, $llm_msgs, $system);
+        $elapsed = (microtime(true) - $start) * 1000;
+
+        if (!is_array($result)) {
+            return array('ok' => false, 'error' => 'no_result');
+        }
+        $timeout_err = sc_api_chat_check_timeout(
+            $elapsed, $timeout, $result
+        );
+        if ($timeout_err !== false) {
+            return array('ok' => false, 'error' => $timeout_err);
+        }
+        if (empty($result['ok'])) {
+            $err = isset($result['error'])
+                ? (string)$result['error'] : 'unknown';
+            return array('ok' => false, 'error' => $err);
+        }
+        $assistant = isset($result['content'])
+            ? (string)$result['content'] : '';
+        if ($assistant !== ''
+            && function_exists('sc_history_append_message')) {
+            sc_history_append_message($chat_id, 'assistant', $assistant);
+        }
+        return array(
+            'ok'        => true,
+            'assistant' => $assistant,
+        );
+    }
+}
+
+// =====================================================================
+// Main dispatch
+// =====================================================================
+
+$cfg = sc_api_chat_load_cfg();
+
+// 1. Auth gate. Every action below this point assumes a valid session.
+if (!sc_api_chat_is_authorized($cfg)) {
+    sc_api_chat_emit(401, array('ok' => false, 'error' => 'auth_required'));
+}
+
+// 2. Method gate: POST only.
+$method = 'GET';
+if (isset($_SERVER['REQUEST_METHOD'])
+    && is_string($_SERVER['REQUEST_METHOD'])) {
+    $method = strtoupper($_SERVER['REQUEST_METHOD']);
+}
+if ($method !== 'POST') {
+    sc_api_chat_emit(405, array('ok' => false, 'error' => 'method_not_allowed'));
+}
+
+$body   = sc_api_chat_read_body();
+$action = sc_api_chat_action($body);
+
+if ($action === 'send') {
+    sc_api_chat_emit(200, sc_api_chat_handle_send($cfg, $body));
+}
+if ($action === 'connect_check') {
+    sc_api_chat_emit(200, sc_api_chat_handle_connect_check($cfg, $body));
+}
+if ($action === 'regenerate') {
+    sc_api_chat_emit(200, sc_api_chat_handle_regenerate($cfg, $body));
+}
+sc_api_chat_emit(400, array('ok' => false, 'error' => 'unknown_action'));
