@@ -1,13 +1,13 @@
 <?php
-/**
- * stoneChat Server language file — Traditional Chinese (zh-TW).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/zh-TW.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- *
- * Keys cover: app, login, chat, newchat, about, history, common, error.
- * Uses Taiwan-specific terminology (e.g. 軟體、網路、訊息、設定).
- */
+ * Traditional Chinese (zh-TW) language table. Returns an associative
+ * array of translation keys => UTF-8 strings. Consumed by
+ * Server/i18n.php sc_t(). Keys cover: app, login, chat, newchat,
+ * about, history, common, error. Uses Taiwan-specific terminology
+ * (軟體, 網路, 訊息, 設定). PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

@@ -1,12 +1,12 @@
 <?php
-/**
- * stoneChat Server language file — Simplified Chinese (zh-CN).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/zh-CN.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- *
- * Keys cover: app, login, chat, newchat, about, history, common, error.
- */
+ * Simplified Chinese (zh-CN) language table. Returns an associative
+ * array of translation keys => UTF-8 strings. Consumed by
+ * Server/i18n.php sc_t(). Keys cover: app, login, chat, newchat,
+ * about, history, common, error. PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

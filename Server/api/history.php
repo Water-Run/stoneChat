@@ -1,12 +1,12 @@
 <?php
-/**
- * stoneChat Server API: history endpoint.
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/api/history.php
  *
  * Single-file JSON API for chat history. All responses are JSON.
  * Routing is HTTP-method-driven:
  *
  *   GET   (no id)              -> list all conversations
- *                                body: {conversations: [{id,title,updated,...}]}
+ *                                body: {conversations: [{id,title,...}]}
  *   GET   ?id=<chat_id>        -> load one conversation
  *                                body: {meta, system, messages}
  *   POST  action="new"         -> create new conversation
@@ -25,19 +25,17 @@
  *   DELETE  ?id=<chat_id>      -> delete conversation
  *                                body out: {ok:true}
  *
- * All actions require a valid sc_session cookie (the value is treated
- * as a session token and validated with sc_auth_check_password against
- * the configured [auth] password). Missing/invalid cookies return
- * 401 {ok:false, error:'auth_required'}.
+ * All actions require a valid session cookie (validated against
+ * cfg[auth][password]). Missing/invalid cookies return 401
+ * {ok:false, error:'auth_required'}. Every chat id is checked with
+ * sc_history_validate_id() before any disk operation; bad ids
+ * return 400 {ok:false, error:'bad_id'}.
  *
- * Path-traversal: every chat id is checked with sc_history_validate_id
- * before any disk operation; bad ids return 400 {ok:false, error:'bad_id'}.
- *
- * Compatible with PHP 5.2 (no closures, no [] array syntax, no
+ * PHP 5.2 compatible (no closures, no [] array syntax, no
  * json_last_error, no http_response_code).
- */
+ * ------------------------------------------------------------------------- */
 
-// ----- module includes -----
+/* ---- module includes -------------------------------------------- */
 require_once dirname(__FILE__) . '/../boot_check.php';
 if (function_exists('sc_strict_environment_check')) {
     sc_strict_environment_check();
@@ -47,20 +45,12 @@ require_once dirname(__FILE__) . '/../auth.php';
 require_once dirname(__FILE__) . '/../history.php';
 require_once dirname(__FILE__) . '/../i18n.php';
 
-// =====================================================================
-// Helpers (all sc_api_history_*-prefixed and include-guarded)
-// =====================================================================
+/* ---- generic helpers (all sc_api_history_*-prefixed, guarded) --- */
 
+/* sc_api_history_emit($status, $payload)
+ *   Send a JSON response with the given status and exit. Uses
+ *   header() (not http_response_code, unavailable on PHP 5.2). */
 if (!function_exists('sc_api_history_emit')) {
-    /**
-     * Send a JSON response with the given numeric HTTP status code
-     * and exit. Uses header() (not http_response_code, unavailable
-     * on PHP 5.2) to set the status line.
-     *
-     * @param int   $status  HTTP status code (e.g. 200, 400, 401).
-     * @param array $payload Decoded array to send (will be json_encoded).
-     * @return void
-     */
     function sc_api_history_emit($status, $payload) {
         if (!headers_sent()) {
             $protocol = 'HTTP/1.0';
@@ -88,16 +78,9 @@ if (!function_exists('sc_api_history_emit')) {
     }
 }
 
+/* sc_api_history_status_reason($status)
+ *   Map numeric HTTP status to its canonical reason phrase. */
 if (!function_exists('sc_api_history_status_reason')) {
-    /**
-     * Map numeric HTTP status to its canonical reason phrase.
-     *
-     * Only the codes this endpoint emits are listed; unknown codes
-     * get an empty reason (PHP falls back to a generic status line).
-     *
-     * @param int $status HTTP status code.
-     * @return string Reason phrase, or '' if not in the table.
-     */
     function sc_api_history_status_reason($status) {
         $reasons = array(
             200 => 'OK',
@@ -112,12 +95,9 @@ if (!function_exists('sc_api_history_status_reason')) {
     }
 }
 
+/* sc_api_history_load_cfg()
+ *   Load CONF.ini from the project root, or return an empty array. */
 if (!function_exists('sc_api_history_load_cfg')) {
-    /**
-     * Load CONF.ini from the project root, or return an empty array.
-     *
-     * @return array Parsed config (empty array on failure).
-     */
     function sc_api_history_load_cfg() {
         $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR
              . '..' . DIRECTORY_SEPARATOR . '..'
@@ -133,17 +113,9 @@ if (!function_exists('sc_api_history_load_cfg')) {
     }
 }
 
+/* sc_api_history_is_authorized($cfg)
+ *   Check that the request carries a valid session cookie. */
 if (!function_exists('sc_api_history_is_authorized')) {
-    /**
-     * Check that the request carries a valid session cookie.
-     *
-     * The cookie value is treated as a session token and validated
-     * with sc_auth_check_password (constant-time compare against
-     * cfg[auth][password]). Empty cookies fail closed.
-     *
-     * @param array $cfg Parsed config.
-     * @return bool true iff the request is authorized.
-     */
     function sc_api_history_is_authorized($cfg) {
         if (!is_array($cfg)) {
             return false;
@@ -154,11 +126,11 @@ if (!function_exists('sc_api_history_is_authorized')) {
             $name = (string)$cfg['auth']['cookie_name'];
         }
         $token = '';
-        if (isset($_COOKIE[$name])
-            && is_string($_COOKIE[$name])) {
+        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
             $token = $_COOKIE[$name];
         }
-        if ($token === '' && isset($_COOKIE['sc_session']) && is_string($_COOKIE['sc_session'])) {
+        if ($token === '' && isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
             $token = $_COOKIE['sc_session'];
         }
         if ($token === '') {
@@ -174,16 +146,10 @@ if (!function_exists('sc_api_history_is_authorized')) {
     }
 }
 
+/* sc_api_history_read_body()
+ *   Read the request body, accepting both JSON and form-encoded.
+ *   Form-encoded is required for IE6 compatibility. */
 if (!function_exists('sc_api_history_read_body')) {
-    /**
-     * Read the request body, accepting both JSON and form-encoded.
-     *
-     * Form-encoded is required for IE6 compatibility; JSON is the
-     * preferred format for modern clients. Whichever parses cleanly
-     * to an array is returned; an empty array means "no body".
-     *
-     * @return array Decoded body.
-     */
     function sc_api_history_read_body() {
         $raw = '';
         if (isset($_SERVER['REQUEST_METHOD'])
@@ -203,18 +169,9 @@ if (!function_exists('sc_api_history_read_body')) {
     }
 }
 
+/* sc_api_history_str($src, $key, $default)
+ *   Fetch a string field from an assoc array, with fallback. */
 if (!function_exists('sc_api_history_str')) {
-    /**
-     * Fetch a string field from an associative array, with fallback.
-     *
-     * Returns $default if the key is missing or not a string; the
-     * value is cast to string otherwise.
-     *
-     * @param mixed  $src     Source array (or anything else -> empty).
-     * @param string $key     Key to read.
-     * @param string $default Default when missing/non-string.
-     * @return string The string value, or $default.
-     */
     function sc_api_history_str($src, $key, $default) {
         if (!is_array($src) || !isset($src[$key])) {
             return (string)$default;
@@ -227,13 +184,9 @@ if (!function_exists('sc_api_history_str')) {
     }
 }
 
+/* sc_api_history_chat_id($body)
+ *   Read a chat id from "id", "chat_id", or "conversation_id". */
 if (!function_exists('sc_api_history_chat_id')) {
-    /**
-     * Read a chat id from the body, accepting "id", "chat_id", or "conversation_id".
-     *
-     * @param array $body Decoded body.
-     * @return string The id, or '' if neither key is present.
-     */
     function sc_api_history_chat_id($body) {
         if (!is_array($body)) {
             return '';
@@ -241,25 +194,21 @@ if (!function_exists('sc_api_history_chat_id')) {
         if (isset($body['chat_id']) && is_string($body['chat_id'])) {
             return $body['chat_id'];
         }
-        if (isset($body['conversation_id']) && is_string($body['conversation_id'])) {
+        if (isset($body['conversation_id'])
+            && is_string($body['conversation_id'])) {
             return $body['conversation_id'];
         }
-        if (isset($body['id']) && (is_string($body['id']) || is_numeric($body['id']))) {
+        if (isset($body['id'])
+            && (is_string($body['id']) || is_numeric($body['id']))) {
             return (string)$body['id'];
         }
         return '';
     }
 }
 
+/* sc_api_history_action($body)
+ *   Resolve the action name from the request body. */
 if (!function_exists('sc_api_history_action')) {
-    /**
-     * Resolve the action name from the request body.
-     *
-     * Empty string when no action is present.
-     *
-     * @param array $body Decoded body.
-     * @return string Action name.
-     */
     function sc_api_history_action($body) {
         if (!is_array($body)) {
             return '';
@@ -271,12 +220,9 @@ if (!function_exists('sc_api_history_action')) {
     }
 }
 
+/* sc_api_history_request_method()
+ *   Return the HTTP method, uppercased. Defaults to 'GET'. */
 if (!function_exists('sc_api_history_request_method')) {
-    /**
-     * Return the HTTP method, uppercased. Defaults to 'GET' if absent.
-     *
-     * @return string HTTP method.
-     */
     function sc_api_history_request_method() {
         if (isset($_SERVER['REQUEST_METHOD'])
             && is_string($_SERVER['REQUEST_METHOD'])) {
@@ -286,15 +232,9 @@ if (!function_exists('sc_api_history_request_method')) {
     }
 }
 
+/* sc_api_history_default_title()
+ *   Build a placeholder display title for a fresh chat. */
 if (!function_exists('sc_api_history_default_title')) {
-    /**
-     * Build a placeholder display title for a freshly created chat.
-     *
-     * The frontend typically renames the chat on first message; the
-     * API just provides a non-empty starting value.
-     *
-     * @return string Default title.
-     */
     function sc_api_history_default_title() {
         if (function_exists('sc_t')) {
             $t = sc_t('new_chat', '');
@@ -306,17 +246,11 @@ if (!function_exists('sc_api_history_default_title')) {
     }
 }
 
-// =====================================================================
-// Action handlers (each returns a response array)
-// =====================================================================
+/* ---- action handlers (each returns a response array) ----------- */
 
+/* sc_api_history_handle_list($cfg)
+ *   List every conversation in HISTORY/, newest first. */
 if (!function_exists('sc_api_history_handle_list')) {
-    /**
-     * List every conversation in HISTORY/, newest first.
-     *
-     * @param array $cfg Parsed config.
-     * @return array Response payload.
-     */
     function sc_api_history_handle_list($cfg) {
         $rows = array();
         if (function_exists('sc_history_list')) {
@@ -326,13 +260,9 @@ if (!function_exists('sc_api_history_handle_list')) {
     }
 }
 
+/* sc_api_history_handle_get($chat_id)
+ *   Load one conversation (meta + system + messages). */
 if (!function_exists('sc_api_history_handle_get')) {
-    /**
-     * Load one conversation (meta + system + messages).
-     *
-     * @param string $chat_id Chat id (already validated).
-     * @return array Response payload.
-     */
     function sc_api_history_handle_get($chat_id) {
         if (!function_exists('sc_history_load')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -350,13 +280,9 @@ if (!function_exists('sc_api_history_handle_get')) {
     }
 }
 
+/* sc_api_history_handle_new($body)
+ *   Create a new conversation and return its id. */
 if (!function_exists('sc_api_history_handle_new')) {
-    /**
-     * Create a new conversation and return its id.
-     *
-     * @param array $body Decoded body.
-     * @return array Response payload.
-     */
     function sc_api_history_handle_new($body) {
         if (!function_exists('sc_history_create')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -372,16 +298,10 @@ if (!function_exists('sc_api_history_handle_new')) {
     }
 }
 
+/* sc_api_history_handle_save($body)
+ *   Append a message to a conversation. Role is normalised to
+ *   "user" or "assistant"; anything else is role_invalid. */
 if (!function_exists('sc_api_history_handle_save')) {
-    /**
-     * Append a message to a conversation.
-     *
-     * The role is normalized to "user" or "assistant" -- anything
-     * else is rejected with role_invalid.
-     *
-     * @param array $body Decoded body.
-     * @return array Response payload.
-     */
     function sc_api_history_handle_save($body) {
         if (!function_exists('sc_history_save_message')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -404,13 +324,9 @@ if (!function_exists('sc_api_history_handle_save')) {
     }
 }
 
+/* sc_api_history_handle_rename($body)
+ *   Rename a conversation (display name in meta.txt). */
 if (!function_exists('sc_api_history_handle_rename')) {
-    /**
-     * Rename a conversation (display name in meta.txt).
-     *
-     * @param array $body Decoded body.
-     * @return array Response payload.
-     */
     function sc_api_history_handle_rename($body) {
         if (!function_exists('sc_history_rename')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -427,13 +343,9 @@ if (!function_exists('sc_api_history_handle_rename')) {
     }
 }
 
+/* sc_api_history_handle_set_system($body)
+ *   Set (or clear, with empty text) the system prompt of a chat. */
 if (!function_exists('sc_api_history_handle_set_system')) {
-    /**
-     * Set (or clear, with empty text) the system prompt of a chat.
-     *
-     * @param array $body Decoded body.
-     * @return array Response payload.
-     */
     function sc_api_history_handle_set_system($body) {
         if (!function_exists('sc_history_set_system')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -450,15 +362,10 @@ if (!function_exists('sc_api_history_handle_set_system')) {
     }
 }
 
+/* sc_api_history_handle_delete($chat_id)
+ *   Delete a conversation (Recycle Bin on Windows, recursive
+ *   unlink elsewhere). */
 if (!function_exists('sc_api_history_handle_delete')) {
-    /**
-     * Delete a conversation (Recycle Bin on Windows, recursive unlink
-     * elsewhere). The function sc_history_delete_to_recycle handles
-     * the platform branch.
-     *
-     * @param string $chat_id Chat id (already validated).
-     * @return array Response payload.
-     */
     function sc_api_history_handle_delete($chat_id) {
         if (!function_exists('sc_history_delete_to_recycle')) {
             return array('ok' => false, 'error' => 'history_unavailable');
@@ -470,20 +377,18 @@ if (!function_exists('sc_api_history_handle_delete')) {
     }
 }
 
-// =====================================================================
-// Main dispatch
-// =====================================================================
+/* ---- main dispatch ---------------------------------------------- */
 
 $cfg = sc_api_history_load_cfg();
 
-// 1. Auth gate. Every action below this point assumes a valid session.
+/* 1. Auth gate. Every action below assumes a valid session. */
 if (!sc_api_history_is_authorized($cfg)) {
     sc_api_history_emit(401, array('ok' => false, 'error' => 'auth_required'));
 }
 
 $method = sc_api_history_request_method();
 
-// 2. GET: list (no id) or detail (with id).
+/* 2. GET: list (no id) or detail (with id). */
 if ($method === 'GET') {
     $id = '';
     if (isset($_GET['id']) && is_string($_GET['id'])) {
@@ -501,14 +406,14 @@ if ($method === 'GET') {
     sc_api_history_emit(200, sc_api_history_handle_get($id));
 }
 
-// 3. POST: action-driven. Each action validates the chat id itself.
+/* 3. POST: action-driven. Each action validates the chat id. */
 if ($method === 'POST') {
     $body   = sc_api_history_read_body();
     $action = sc_api_history_action($body);
 
-    // Action-specific id validation. The id is required for everything
-    // except "new". This guards against path-traversal payloads
-    // sneaking through with a legitimate action name.
+    /* action-specific id validation. Required for everything
+     * except "new". This guards against path-traversal payloads
+     * sneaking through with a legitimate action name. */
     if ($action !== 'new' && $action !== 'create'
         && $action !== 'list' && $action !== 'get') {
         $cid = sc_api_history_chat_id($body);
@@ -544,7 +449,7 @@ if ($method === 'POST') {
     sc_api_history_emit(400, array('ok' => false, 'error' => 'bad_action'));
 }
 
-// 4. DELETE: always takes ?id= or ?chat_id=.
+/* 4. DELETE: always takes ?id= or ?chat_id=. */
 if ($method === 'DELETE') {
     $id = '';
     if (isset($_GET['id']) && is_string($_GET['id'])) {
@@ -559,5 +464,5 @@ if ($method === 'DELETE') {
     sc_api_history_emit(200, sc_api_history_handle_delete($id));
 }
 
-// 5. Anything else (PUT, OPTIONS, ...) is not supported.
+/* 5. Anything else (PUT, OPTIONS, ...) is not supported. */
 sc_api_history_emit(405, array('ok' => false, 'error' => 'method_not_allowed'));

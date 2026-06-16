@@ -1,22 +1,14 @@
 <?php
-/**
- * stoneChat Server language file — Russian (ru).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/ru.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- *
- * Russian uses an appropriate formal register:
- *   - Button / menu labels are infinitives (Отправить, Войти, Создать),
- *     which is the standard UI convention and inherently formal — it
- *     avoids the informal Ты imperative while staying idiomatic.
- *   - Error / status / notification messages are written in the formal
- *     second-person Вы form (Пожалуйста, проверьте / войдите) or in
- *     impersonal / third-person constructions (Не авторизован,
- *     Время ожидания истекло), the appropriate formal register for
- *     system feedback addressed to an end user.
- *
- * Keys cover: app, login, chat, newchat, about, history, common, error.
- */
+ * Russian (ru) language table. Returns an associative array of
+ * translation keys => UTF-8 strings. Consumed by Server/i18n.php
+ * sc_t(). Uses a formal register: button / menu labels are
+ * infinitives (Отправить, Войти, Создать); error / status messages
+ * use the formal Вы form or impersonal constructions. PHP 5.2
+ * compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

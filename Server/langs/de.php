@@ -1,25 +1,17 @@
 <?php
-/**
- * stoneChat Server language file — German (de).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/de.php
  *
- * Key set matches the canonical en.php (the language spec). Every key defined
- * there is present here so sc_t() never has to fall back to English.
+ * German (de) language table. Key set matches the canonical en.php
+ * (the language spec) so sc_t() never has to fall back to English.
  *
- * Formal address register:
- *   - Button / menu labels are written as Sie-imperatives / infinitives
- *     (Anmelden, Senden, Abbrechen, Verbindung prüfen, Konfiguration neu
- *     laden, Chat löschen ...). In German the formal imperative for the
- *     2nd-person plural 'Sie' is identical to the infinitive, so this is
- *     the natural Sie-form.
- *   - Error / status messages keep a neutral impersonal construction so the
- *     user is addressed politely without sounding like a command.
+ * Formal register: button / menu labels are Sie-imperatives /
+ * infinitives (Anmelden, Senden, Abbrechen, ...); error / status
+ * messages keep a neutral impersonal construction.
  *
- * Loaded by Server/i18n.php via include; uses the `return array(...)` style
- * so the loader captures the table through the include return value.
- *
- * UTF-8. Compatible with PHP 5.2 (array() not []; direct UTF-8 bytes; no
- * \uXXXX escapes which would require PHP 5.4+).
- */
+ * Loaded by Server/i18n.php via include; uses the `return array(...)`
+ * style. UTF-8. PHP 5.2 compatible (array() not []; no \uXXXX escapes).
+ * ------------------------------------------------------------------------- */
 
 return array(
     // --- app ---

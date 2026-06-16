@@ -1,17 +1,14 @@
 <?php
-/**
- * stoneChat Server i18n module.
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/i18n.php
  *
- * Loads language arrays from Server/langs/<code>.php and exposes sc_t()
- * translation lookup with a static in-memory cache so each file is parsed
- * at most once per request.
+ * Load language arrays from Server/langs/<code>.php and expose sc_t()
+ * for translation lookup with a static in-memory cache so each file
+ * is parsed at most once per request.
  *
  * Expected lang file format (Server/langs/<code>.php):
  *   <?php
- *   $entries = array(
- *       'greeting' => 'Hello, world!',
- *       'farewell' => 'Goodbye.',
- *   );
+ *   $entries = array('greeting' => 'Hello, world!');
  *   // -- or equivalently --
  *   // return array('greeting' => 'Hello, world!');
  *
@@ -21,43 +18,39 @@
  *   3. CONF.ini [i18n] default = ...
  *   4. The $default_lang argument passed to sc_i18n_init()
  *
- * Compatible with PHP 5.2.
- */
+ * Public helpers (sc_-prefixed, function_exists guarded):
+ *   sc_i18n_supported_langs()           fixed list of supported codes
+ *   sc_i18n_langs_dir()                 absolute path to Server/langs/
+ *   sc_i18n_load($code)                 load (cached) translation table
+ *   sc_load_lang($code)                 alias of sc_i18n_load
+ *   sc_available_langs()                langs present on disk
+ *   sc_i18n_current_lang($default)      resolve current code
+ *   sc_i18n_init($default)              alias of sc_i18n_current_lang
+ *   sc_t($key, $lang = '')              translate
+ *
+ * PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 
+/* sc_i18n_supported_langs()
+ *   Fixed list of language codes the application supports. */
 if (!function_exists('sc_i18n_supported_langs')) {
-    /**
-     * Return the list of language codes the application supports.
-     *
-     * The list is fixed; presence on disk is determined by sc_available_langs().
-     *
-     * @return array List of language codes (e.g. 'zh-CN', 'en').
-     */
     function sc_i18n_supported_langs() {
         return array('zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'fr', 'de');
     }
 }
 
+/* sc_i18n_langs_dir()
+ *   Absolute path to Server/langs/. */
 if (!function_exists('sc_i18n_langs_dir')) {
-    /**
-     * Absolute path to the Server/langs/ directory containing per-language files.
-     *
-     * @return string Absolute path, with a trailing separator.
-     */
     function sc_i18n_langs_dir() {
         return dirname(__FILE__) . DIRECTORY_SEPARATOR . 'langs';
     }
 }
 
+/* sc_i18n_load($lang_code)
+ *   Load the translation table for a code; static cache keeps the
+ *   file included at most once per request. */
 if (!function_exists('sc_i18n_load')) {
-    /**
-     * Load the translation table for a language code.
-     *
-     * Uses a static cache so the file is included at most once per request.
-     * Falls back to an empty array if the file is missing or malformed.
-     *
-     * @param string $lang_code Language code (e.g. 'en', 'zh-CN').
-     * @return array Associative array of key=>string; empty array on miss.
-     */
     function sc_i18n_load($lang_code) {
         static $cache = array();
         if (!is_string($lang_code) || $lang_code === '') {
@@ -71,7 +64,7 @@ if (!function_exists('sc_i18n_load')) {
             $cache[$lang_code] = array();
             return array();
         }
-        // Accept both `$entries = array(...)` and `return array(...)` styles.
+        /* accept both `$entries = array(...)` and `return array(...)` */
         $entries = null;
         $result = include $file;
         if (is_array($result)) {
@@ -84,27 +77,18 @@ if (!function_exists('sc_i18n_load')) {
     }
 }
 
+/* sc_load_lang($lang_code)
+ *   Alias of sc_i18n_load() for the short contract name. */
 if (!function_exists('sc_load_lang')) {
-    /**
-     * Alias of sc_i18n_load() for callers using the short contract name.
-     *
-     * @param string $lang_code Language code.
-     * @return array Associative array of translations; empty on miss.
-     */
     function sc_load_lang($lang_code) {
         return sc_i18n_load($lang_code);
     }
 }
 
+/* sc_available_langs()
+ *   Scan Server/langs/ and return the codes that have a file.
+ *   Sorted alphabetically. */
 if (!function_exists('sc_available_langs')) {
-    /**
-     * Scan Server/langs/ and return the language codes that have a file.
-     *
-     * A code is "available" iff <code>.php exists and is readable.
-     * The result is sorted alphabetically.
-     *
-     * @return array Sorted list of language codes present on disk.
-     */
     function sc_available_langs() {
         $dir = sc_i18n_langs_dir();
         if (!is_dir($dir)) {
@@ -138,16 +122,11 @@ if (!function_exists('sc_available_langs')) {
     }
 }
 
+/* sc_i18n_current_lang($default)
+ *   Resolve the current language code. Memoized per request.
+ *   Priority: $_GET['lang'] > $_COOKIE['sc_lang'] > CONF.ini
+ *   [i18n] default > $default > 'en'. */
 if (!function_exists('sc_i18n_current_lang')) {
-    /**
-     * Resolve the current language code using the documented priority.
-     *
-     * Memoized per request. Validates the result against the supported
-     * list, finally falling back to 'en' if nothing matches.
-     *
-     * @param string $default Fallback when no higher-priority source is set.
-     * @return string A language code from sc_i18n_supported_langs().
-     */
     function sc_i18n_current_lang($default) {
         static $resolved = null;
         if ($resolved !== null) {
@@ -155,17 +134,19 @@ if (!function_exists('sc_i18n_current_lang')) {
         }
         $supported = sc_i18n_supported_langs();
         $lang = '';
-        // 1. URL parameter ?lang=
+        /* 1. URL parameter ?lang= */
         if (isset($_GET['lang']) && is_string($_GET['lang'])) {
             $lang = $_GET['lang'];
         }
-        // 2. Cookie sc_lang
-        if ($lang === '' && isset($_COOKIE['sc_lang']) && is_string($_COOKIE['sc_lang'])) {
+        /* 2. Cookie sc_lang */
+        if ($lang === '' && isset($_COOKIE['sc_lang'])
+            && is_string($_COOKIE['sc_lang'])) {
             $lang = $_COOKIE['sc_lang'];
         }
-        // 3. CONF.ini [i18n] default, then $default arg
+        /* 3. CONF.ini [i18n] default, then $default arg */
         if ($lang === '') {
-            $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'CONF.ini';
+            $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..'
+                 . DIRECTORY_SEPARATOR . 'CONF.ini';
             $cfg = array();
             if (function_exists('sc_load_config')) {
                 $cfg = sc_load_config($ini);
@@ -175,13 +156,14 @@ if (!function_exists('sc_i18n_current_lang')) {
                     $cfg = $parsed;
                 }
             }
-            if (isset($cfg['i18n']['default']) && is_string($cfg['i18n']['default'])) {
+            if (isset($cfg['i18n']['default'])
+                && is_string($cfg['i18n']['default'])) {
                 $lang = $cfg['i18n']['default'];
             } else {
                 $lang = (string)$default;
             }
         }
-        // Validate; final fallback is 'en'.
+        /* validate; final fallback is 'en'. */
         if (!in_array($lang, $supported)) {
             $lang = (string)$default;
         }
@@ -193,28 +175,17 @@ if (!function_exists('sc_i18n_current_lang')) {
     }
 }
 
+/* sc_i18n_init($default_lang)
+ *   Initialise the i18n subsystem and return the chosen code. */
 if (!function_exists('sc_i18n_init')) {
-    /**
-     * Initialize the i18n subsystem and return the chosen language code.
-     *
-     * Safe to call more than once; the resolution is memoized.
-     *
-     * @param string $default_lang Fallback language code (e.g. 'en').
-     * @return string The resolved current language code.
-     */
     function sc_i18n_init($default_lang) {
         return sc_i18n_current_lang($default_lang);
     }
 }
 
+/* sc_t($key, $lang = '')
+ *   Translate a key. Returns the key itself if not found. */
 if (!function_exists('sc_t')) {
-    /**
-     * Translate a key.
-     *
-     * @param string $key  Translation key.
-     * @param string $lang Optional language code. Empty = use current.
-     * @return string Translated string, or the key itself if not found.
-     */
     function sc_t($key, $lang = '') {
         if (!is_string($key) || $key === '') {
             return '';

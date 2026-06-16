@@ -1,19 +1,17 @@
 <?php
-/**
- * stoneChat Mock LLM Endpoint.
- * OpenAI-compatible /chat/completions mock.
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/api/mock_llm.php
+ *
+ * OpenAI-compatible /chat/completions mock for the local dev loop.
  * Supports streaming (SSE) and non-streaming modes.
  *
- * CORS: this endpoint is intended for the local stoneChat dev loop
- * (the browser hits it on 127.0.0.1 / localhost through the same PHP
- * server). Wide-open CORS was previously enabled with "*", which let
- * any external origin invoke the mock and burn CPU. The current
- * policy:
- *   - No Origin header at all (same-origin request): always allowed.
+ * CORS policy (intentionally strict -- the previous wildcard "*"
+ * let any external origin burn CPU on this endpoint):
+ *   - No Origin header at all (same-origin): always allowed.
  *   - Origin matches http://localhost:<port> or
  *     http://127.0.0.1:<port>: allowed.
  *   - Any other Origin: respond 403 and refuse to serve.
- */
+ * ------------------------------------------------------------------------- */
 
 require_once dirname(__FILE__) . '/../boot_check.php';
 if (function_exists('sc_strict_environment_check')) {
@@ -64,38 +62,37 @@ if ($stream) {
     }
     ob_implicit_flush(true);
 
-    $chunks = array("Hello", "!", " This", " is", " a", " live", " streaming", " mock", " response", " from", " your", " local", " stoneChat", " server", ".");
-    
+    $chunks = array("Hello", "!", " This", " is", " a", " live", " streaming",
+                    " mock", " response", " from", " your", " local",
+                    " stoneChat", " server", ".");
+
     foreach ($chunks as $chunk) {
         if (function_exists('connection_aborted') && connection_aborted()) {
             break;
         }
         $event = array(
             'choices' => array(
-                array(
-                    'delta' => array(
-                        'content' => $chunk
-                    )
-                )
+                array('delta' => array('content' => $chunk))
             )
         );
         echo "data: " . json_encode($event) . "\n\n";
-        usleep(100000); // 100ms delay to simulate network latency
+        usleep(100000); /* 100ms delay to simulate network latency */
     }
     echo "data: [DONE]\n\n";
     exit;
-} else {
-    header('Content-Type: application/json');
-    $response = array(
-        'choices' => array(
-            array(
-                'message' => array(
-                    'role' => 'assistant',
-                    'content' => 'Hello! This is a static mock response from your local stoneChat server.'
-                )
+}
+
+header('Content-Type: application/json');
+$response = array(
+    'choices' => array(
+        array(
+            'message' => array(
+                'role'    => 'assistant',
+                'content' => 'Hello! This is a static mock response from '
+                           . 'your local stoneChat server.'
             )
         )
-    );
-    echo json_encode($response);
-    exit;
-}
+    )
+);
+echo json_encode($response);
+exit;

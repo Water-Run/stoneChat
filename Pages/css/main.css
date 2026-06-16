@@ -1,27 +1,27 @@
-/*
- * stoneChat main stylesheet.
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/css/main.css
  *
- * Retro 2001-era web aesthetic, IE6 / Win XP compatible.
- * Pure CSS2.1 - no border-radius, no box-shadow, no transitions,
- * no transforms, no @keyframes, no gradients.
+ * Main stylesheet. Retro 2001-era web aesthetic, IE6 / Win XP
+ * compatible. Pure CSS2.1 -- no border-radius, no box-shadow, no
+ * transitions, no transforms, no @keyframes, no gradients.
  *
  * Color palette:
- *   bg          #f4f1ea  (beige page background)
- *   panel       #ffffff  (white panel surface)
- *   text        #333333  (dark gray body text)
- *   muted       #666666  (helper text)
- *   link        #003366  (navy hyperlink)
- *   link-hover  #990000  (dark red hover)
- *   border      #888888  (default 1px border)
- *   border-lit  #ffffff  (top/left highlight on outset buttons)
- *   border-dk   #444444  (bottom/right shadow on outset buttons)
- *   good        #2a6f2a  (green status badge)
- *   bad         #8b1a1a  (red status badge)
+ *   bg          #f4f1ea  beige page background
+ *   panel       #ffffff  white panel surface
+ *   text        #333333  dark gray body text
+ *   muted       #666666  helper text
+ *   link        #003366  navy hyperlink
+ *   link-hover  #990000  dark red hover
+ *   border      #888888  default 1px border
+ *   border-lit  #ffffff  top/left highlight on outset buttons
+ *   border-dk   #444444  bottom/right shadow on outset buttons
+ *   good        #2a6f2a  green status badge
+ *   bad         #8b1a1a  red status badge
  *
- * Layout uses div + float (IE6-compatible) with a 760px centered wrapper.
- * The two-column chat page uses a fixed-width sidebar (180px) floated left
- * and a main pane floated right.
- */
+ * Layout uses div + float (IE6-compatible) with a 760px centered
+ * wrapper. The two-column chat page uses a fixed-width sidebar
+ * (180px) floated left and a main pane floated right.
+ * ------------------------------------------------------------------------- */
 
 /* -------------------------------------------------------------------------
  * Reset / base

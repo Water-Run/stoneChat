@@ -1,23 +1,17 @@
 <?php
-/**
- * stoneChat Server language file — French (fr).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/fr.php
  *
- * Key set matches the canonical en.php (the language spec). Every key defined
- * there is present here so sc_t() never has to fall back to English.
+ * French (fr) language table. Key set matches the canonical en.php
+ * (the language spec) so sc_t() never has to fall back to English.
  *
- * Formal address register:
- *   - Button / menu labels are written as vous-imperatives
- *     (Connectez-vous, Envoyez, Annulez, Vérifiez la connexion, etc.),
- *     the standard formal command form for a UI directed at 'vous'.
- *   - Error / status messages keep an impersonal or vous-form construction
- *     so the user is addressed politely.
+ * Formal register: button / menu labels are vous-imperatives
+ * (Connectez-vous, Envoyez, Annulez, ...); error / status messages
+ * keep an impersonal or vous-form construction.
  *
- * Loaded by Server/i18n.php via include; uses the `return array(...)` style
- * so the loader captures the table through the include return value.
- *
- * UTF-8. Compatible with PHP 5.2 (array() not []; no \uXXXX escapes which
- * would require PHP 5.4+; direct UTF-8 bytes used instead).
- */
+ * Loaded by Server/i18n.php via include; uses the `return array(...)`
+ * style. UTF-8. PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 
 return array(
     // --- app ---

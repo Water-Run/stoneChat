@@ -1,40 +1,40 @@
-/**
- * stoneChat Pages/js/chat.js
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/js/chat.js
  *
  * Chat interaction layer for the stoneChat web client.
  *
- * IE6 / Win-XP compatible (ES3 only):
- *   - var / function declarations only (no let, no const, no arrow funcs)
- *   - no fetch / Promise / localStorage / JSON.parse assumptions
- *   - XMLHttpRequest with ActiveX fallback (delegated to SC.Api)
- *   - textContent / createElement for all user-controlled content
- *     (no innerHTML injection -> XSS protection)
+ * IE6 / Win-XP compatible (ES3 only): var / function declarations
+ * only; no fetch / Promise / localStorage / JSON.parse assumptions;
+ * XMLHttpRequest with ActiveX fallback (delegated to SC.Api);
+ * textContent / createElement for all user-controlled content (no
+ * innerHTML injection -> XSS protection).
  *
  * Public namespaces:
  *   window.SC.Chat   primary namespace (per the user-facing spec)
  *   window.scChat    legacy alias kept for in-tree callers
  *
- * Method shape:
- *   init(config, providers)         - bootstrap, wire up UI controls
- *   renderMessage(role, content, ts) - append a message bubble
- *   sendMessage(chatId, text)       - send to provider, render user + AI
- *   stop()                          - abort the in-flight XHR
- *   regenerate()                    - resend the last user message
- *   startCountdown()                - begin the "waiting" timer
- *   stopCountdown()                 - halt and reset the timer
- *   updateCharCount(text, max)      - update the "字数: N / M" display
- *   handleEnterKey(e, callback)     - Ctrl+Enter shortcut handler
- *   scrollToBottom()                - auto-scroll messages container
- *   clearMessages()                 - empty the messages container
- *   deleteConversation(chatId)      - drop a conversation (recycle bin)
- *   setActiveChatId(chatId)         - remember which chat is active
+ * Methods:
+ *   init(config, providers)         bootstrap, wire up UI controls
+ *   renderMessage(role, content, ts) append a message bubble
+ *   sendMessage(chatId, text)       send to provider, render user + AI
+ *   stop()                          abort the in-flight XHR
+ *   regenerate()                    resend the last user message
+ *   startCountdown()                begin the "waiting" timer
+ *   stopCountdown()                 halt and reset the timer
+ *   updateCharCount(text, max)      update the "字数: N / M" display
+ *   handleEnterKey(e, callback)     Ctrl+Enter shortcut handler
+ *   scrollToBottom()                auto-scroll messages container
+ *   clearMessages()                 empty the messages container
+ *   deleteConversation(chatId)      drop a conversation (recycle bin)
+ *   setActiveChatId(chatId)         remember which chat is active
  *
  * The user-facing spec mandates a synchronous send via SC.Api.sendMessage.
  * When the backend grows an SSE streaming endpoint, the renderMessage +
- * startCountdown pair is the integration point - the assistant bubble is
- * already created as a normal DOM node, so chunked appendage is a 2-line
- * follow-up: streamChunk(text) -> node.lastChild.textContent += text.
- */
+ * startCountdown pair is the integration point -- the assistant bubble
+ * is already created as a normal DOM node, so chunked appendage is a
+ * 2-line follow-up: streamChunk(text) -> node.lastChild.textContent
+ * += text.
+ * ------------------------------------------------------------------------- */
 (function () {
     'use strict';
 

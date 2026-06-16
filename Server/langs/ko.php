@@ -1,18 +1,14 @@
 <?php
-/**
- * stoneChat Server language file — Korean (ko).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/ko.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- *
- * Korean uses formal speech level (합쇼체 / 존댓말):
- *   - Button / menu labels stay in the idiomatic nominal (-기) or noun form.
- *   - Error / status / notification messages end with formal predicates
- *     (-입니다, -됩니다, -되었습니다, -하십시오) so the user is
- *     addressed respectfully, with the polite request particle -주.
- *
- * Keys cover: app, login, chat, newchat, about, history, common, error.
- */
+ * Korean (ko) language table. Returns an associative array of
+ * translation keys => UTF-8 strings. Consumed by Server/i18n.php
+ * sc_t(). Uses formal speech level (합쇼체 / 존댓말): button /
+ * menu labels stay in the idiomatic nominal (-기) or noun form;
+ * error / status messages end with formal predicates (-입니다,
+ * -됩니다, ...). PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

@@ -1,13 +1,11 @@
 <?php
-/**
- * stoneChat Server language file — Japanese (ja).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/ja.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- *
- * Keys cover: app, login, chat, newchat, about, history, common, error.
- * Uses polite form (-です / -ます).
- */
+ * Japanese (ja) language table. Returns an associative array of
+ * translation keys => UTF-8 strings. Consumed by Server/i18n.php
+ * sc_t(). Uses polite form (-です / -ます). PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

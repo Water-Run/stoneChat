@@ -38,24 +38,25 @@
 </div>
 <script type="text/javascript">
 //<![CDATA[
-/**
- * stoneChat Pages/index.htm bootstrap and login form handler.
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/index.htm bootstrap and login form handler.
  *
- * Designed for IE6 on Windows XP. Pure ES3 JavaScript: var/function only,
- * no const/let/arrow, no template literals, no fetch/Promise.
+ * Designed for IE6 on Windows XP. Pure ES3 JavaScript: var/function
+ * only, no const/let/arrow, no template literals, no fetch/Promise.
  *
- * scLoginInit()
- *   Page-load bootstrap. Reads the public config (title + language list)
- *   via window.SC.Api.getConfig(), then initialises the i18n module and
- *   replaces the language switcher placeholder with the rendered HTML.
+ *   scLoginInit()
+ *     Page-load bootstrap. Reads the public config (title + language
+ *     list) via window.SC.Api.getConfig(), then initialises the i18n
+ *     module and replaces the language switcher placeholder.
  *
- * scLoginSubmit(form)
- *   onsubmit handler. Always returns false to suppress the native form
- *   post. Calls window.SC.Api.login() and either redirects to chat.htm
- *   (on success) or surfaces a localised error message. Locked state
- *   (HTTP 423 or a 'locked' / 'too_many_attempts' error code) is mapped
- *   to a single user-facing prompt and the inputs are disabled.
- */
+ *   scLoginSubmit(form)
+ *     onsubmit handler. Always returns false to suppress the native
+ *     form post. Calls window.SC.Api.login() and either redirects to
+ *     chat.htm (on success) or surfaces a localised error message.
+ *     Locked state (HTTP 423 or a 'locked' / 'too_many_attempts'
+ *     code) is mapped to a single user-facing prompt; inputs are
+ *     disabled.
+ * ------------------------------------------------------------------------- */
 function scLoginInit() {
   var api = (typeof window.SC !== 'undefined' && window.SC && window.SC.Api)
             ? window.SC.Api : window.scApi;

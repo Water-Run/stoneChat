@@ -1,12 +1,13 @@
 <?php
-/**
- * stoneChat Server language file — English (en).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/langs/en.php
  *
- * Returns an associative array of translation keys => UTF-8 strings.
- * This is the canonical / fallback language, so every key defined in the
- * language spec is present here, even if the matching zh-CN copy is shorter.
- * Consumed by Server/i18n.php sc_t(). Compatible with PHP 5.2.
- */
+ * English (en) language table. Returns an associative array of
+ * translation keys => UTF-8 strings. This is the canonical /
+ * fallback language, so every key defined in the language spec is
+ * present here, even if the matching zh-CN copy is shorter.
+ * Consumed by Server/i18n.php sc_t(). PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 return array(
     // --- app ---
     'app.title'              => 'stoneChat',

@@ -1,49 +1,40 @@
-/**
- * stoneChat Pages/js/api.js
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/js/api.js
  *
- * IE6-compatible synchronous XMLHttpRequest wrappers for the /Server/api/*
- * endpoints. Pure vanilla JavaScript: no fetch, no Promise, no jQuery, no
- * localStorage, no arrow functions, no let/const, no template literals.
+ * IE6-compatible synchronous XMLHttpRequest wrappers for the
+ * /Server/api/* endpoints. Pure vanilla JavaScript: no fetch, no
+ * Promise, no jQuery, no localStorage, no arrow / let / const / no
+ * template literals.
  *
- * Public namespace
- * ----------------
- *   SC.Api                 (primary, per the user-facing spec)
- *   window.scApi           (alias kept for other in-tree callers that
- *                           already reference the lowercase form)
- *   window.SC_Api          (alias for legacy / hand-written callers)
+ * Public namespaces
+ *   SC.Api          (primary, per the user-facing spec)
+ *   window.scApi    (alias for in-tree lowercase callers)
+ *   window.SC_Api   (alias for legacy / hand-written callers)
  *
  * Method shape
- * ------------
- * Every method returns a single envelope object, synchronously:
- *   { ok: Boolean, data: any, error: String }
- *
- *   ok    - true on HTTP 2xx AND server-reported success (when the server
- *           embeds its own "ok" flag); false otherwise.
- *   data  - server payload (object / array / string / null). For endpoints
- *           that already reply with {ok, data, error}, the inner data is
- *           surfaced verbatim; for endpoints that reply with a plain body
- *           (e.g. /api/config.php), the entire body is placed in data.
- *   error - empty string on success; otherwise a short machine-friendly
- *           code such as 'timeout', 'network_error', 'http_404', 'invalid_json',
+ *   Every method returns a single envelope synchronously:
+ *     { ok: Boolean, data: any, error: String }
+ *   ok    - true on HTTP 2xx AND server-reported success; false
+ *           otherwise.
+ *   data  - server payload. For endpoints that reply with
+ *           {ok, data, error}, the inner data is surfaced verbatim;
+ *           for endpoints that reply with a plain body (e.g.
+ *           /api/config.php), the entire body is placed in data.
+ *   error - empty string on success; otherwise a short code such
+ *           as 'timeout', 'network_error', 'http_404', 'invalid_json',
  *           or the server's own error string.
  *
- * Cookies
- * -------
- * Same-origin XHR automatically sends cookies. The session cookie set by
- * /Server/api/auth.php is therefore forwarded on every call without
- * requiring withCredentials (which is undefined in IE6 anyway).
+ * Cookies: same-origin XHR forwards cookies automatically. The
+ * session cookie set by /Server/api/auth.php is therefore sent
+ * without needing withCredentials (undefined in IE6 anyway).
  *
- * Timeout
- * -------
- * 30 seconds. Implemented via window.setTimeout + xhr.abort() because
+ * Timeout: 30 seconds, via window.setTimeout + xhr.abort() because
  * xhr.timeout is only available from IE8 onward.
  *
- * JSON
- * ----
- * IE6/IE7 have no native JSON. We delegate to JSON.parse / JSON.stringify
- * when available (IE8+ / modern browsers) and fall back to a minimal
- * in-house implementation otherwise.
- */
+ * JSON: IE6/IE7 have no native JSON. We use JSON.parse /
+ * JSON.stringify when available and fall back to a minimal in-house
+ * implementation otherwise.
+ * ------------------------------------------------------------------------- */
 (function () {
     'use strict';
 

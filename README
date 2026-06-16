@@ -13,7 +13,5 @@ You need to edit CONF.ini according to the comments to configure the LLM and oth
 Then visit it in your browser. The default address is:
 http://localhost:9999
 
-If you are running on Windows 10 1809 (build 17763) or newer -- which is the default for every supported Windows version from late 2018 onwards -- the first page load of every browser session will be intercepted by a brief "Super-Modern-HTML" splash. The splash acknowledges that the host hardware is far newer than the 2001-era UI suggests, then auto-redirects to the actual retro page after a 3-second countdown. The splash is purely cosmetic; closing the browser and re-opening RUN.bat will show it again (a session cookie suppresses it within one browser session). The splash is not shown on hosts older than Windows 10 1809, and it is bypassed entirely for non-HTML requests (API endpoints, static assets, /favicon.ico).
-
 stoneChat is open-sourced under WTFPL at:
 https://github.com/Water-Run/stoneChat

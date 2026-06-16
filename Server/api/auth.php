@@ -1,6 +1,6 @@
 <?php
-/**
- * stoneChat Server API: auth.
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/api/auth.php
  *
  * POST endpoint for the login / logout / check flow. The browser
  * may not support FormData on IE6, so the raw body is read via
@@ -31,12 +31,11 @@
  * responses never reveal whether the password was wrong vs. whether
  * the account is locked beyond the documented "locked" payload.
  *
- * Compatible with PHP 5.2 (no closures, no [] array syntax, no
+ * PHP 5.2 compatible (no closures, no [] array syntax, no
  * json_last_error, function_exists guards on every helper).
- */
+ * ------------------------------------------------------------------------- */
 
-// Dependencies: load via relative path from this file's directory
-// (Server/api/auth.php -> Server/ and back to project root for config).
+/* ---- dependencies ----------------------------------------------- */
 require_once dirname(__FILE__) . '/../boot_check.php';
 if (function_exists('sc_strict_environment_check')) {
     sc_strict_environment_check();
@@ -47,12 +46,9 @@ require_once dirname(__FILE__) . '/../i18n.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
+/* sc_api_auth_cfg_path()
+ *   Absolute path to CONF.ini (project root). */
 if (!function_exists('sc_api_auth_cfg_path')) {
-    /**
-     * Absolute path to CONF.ini (project root).
-     *
-     * @return string Path.
-     */
     function sc_api_auth_cfg_path() {
         return dirname(__FILE__) . DIRECTORY_SEPARATOR
              . '..' . DIRECTORY_SEPARATOR
@@ -61,28 +57,22 @@ if (!function_exists('sc_api_auth_cfg_path')) {
     }
 }
 
+/* sc_api_auth_load_cfg()
+ *   Load the parsed stoneChat config. */
 if (!function_exists('sc_api_auth_load_cfg')) {
-    /**
-     * Load the parsed stoneChat config.
-     *
-     * @return array Parsed config, or empty array on failure.
-     */
     function sc_api_auth_load_cfg() {
         return sc_load_config(sc_api_auth_cfg_path());
     }
 }
 
+/* sc_api_auth_cookie_params($cfg)
+ *   Resolve the session cookie's name and lifetime from cfg. */
 if (!function_exists('sc_api_auth_cookie_params')) {
-    /**
-     * Resolve the session cookie's name and lifetime from cfg.
-     *
-     * @param array $cfg Parsed config.
-     * @return array array('name' => string, 'expires' => int seconds, 0 = session).
-     */
     function sc_api_auth_cookie_params($cfg) {
         $name    = 'sc_auth';
         $expires = 0;
-        if (is_array($cfg) && isset($cfg['auth']) && is_array($cfg['auth'])) {
+        if (is_array($cfg) && isset($cfg['auth'])
+            && is_array($cfg['auth'])) {
             if (isset($cfg['auth']['cookie_name'])
                 && (string)$cfg['auth']['cookie_name'] !== '') {
                 $name = (string)$cfg['auth']['cookie_name'];
@@ -98,13 +88,9 @@ if (!function_exists('sc_api_auth_cookie_params')) {
     }
 }
 
+/* sc_api_auth_cookie_value($cfg)
+ *   Build a signed session cookie value (opaque, "scv1:" prefix). */
 if (!function_exists('sc_api_auth_cookie_value')) {
-    /**
-     * Build a signed session cookie value.
-     *
-     * @param array $cfg Parsed config.
-     * @return string Opaque value with a fixed "scv1:" prefix.
-     */
     function sc_api_auth_cookie_value($cfg) {
         if (function_exists('sc_auth_generate_token')) {
             return sc_auth_generate_token($cfg);
@@ -116,31 +102,23 @@ if (!function_exists('sc_api_auth_cookie_value')) {
     }
 }
 
+/* sc_api_auth_set_cookie($cfg)
+ *   Issue the HttpOnly session cookie. Mirrors the value into
+ *   $_COOKIE so a follow-up "check" in the same request sees it. */
 if (!function_exists('sc_api_auth_set_cookie')) {
-    /**
-     * Issue the HttpOnly session cookie.
-     *
-     * Also mirrors the value into $_COOKIE so a follow-up "check"
-     * in the same request sees the new state.
-     *
-     * @param array $cfg Parsed config.
-     */
     function sc_api_auth_set_cookie($cfg) {
         $params = sc_api_auth_cookie_params($cfg);
         $value  = sc_api_auth_cookie_value($cfg);
         $expire = ($params['expires'] > 0) ? (time() + $params['expires']) : 0;
-        // PHP 5.2: name, value, expire, path, domain, secure, httponly
+        /* PHP 5.2: name, value, expire, path, domain, secure, httponly */
         setcookie($params['name'], $value, $expire, '/', '', false, true);
         $_COOKIE[$params['name']] = $value;
     }
 }
 
+/* sc_api_auth_clear_cookie($cfg)
+ *   Remove the session cookie by setting a past expiry. */
 if (!function_exists('sc_api_auth_clear_cookie')) {
-    /**
-     * Remove the session cookie by setting a past expiry.
-     *
-     * @param array $cfg Parsed config.
-     */
     function sc_api_auth_clear_cookie($cfg) {
         $params = sc_api_auth_cookie_params($cfg);
         setcookie($params['name'], '', time() - 3600, '/');
@@ -150,13 +128,9 @@ if (!function_exists('sc_api_auth_clear_cookie')) {
     }
 }
 
+/* sc_api_auth_verify_cookie($cfg)
+ *   Decide whether the current request carries a valid session cookie. */
 if (!function_exists('sc_api_auth_verify_cookie')) {
-    /**
-     * Decide whether the current request carries a valid session cookie.
-     *
-     * @param array $cfg Parsed config.
-     * @return bool true if a valid signed session cookie is present.
-     */
     function sc_api_auth_verify_cookie($cfg) {
         $params = sc_api_auth_cookie_params($cfg);
         if (!isset($_COOKIE[$params['name']])) {
@@ -173,12 +147,9 @@ if (!function_exists('sc_api_auth_verify_cookie')) {
     }
 }
 
+/* sc_api_auth_read_body()
+ *   Read and JSON-decode the current POST body. */
 if (!function_exists('sc_api_auth_read_body')) {
-    /**
-     * Read and JSON-decode the current POST body.
-     *
-     * @return array Decoded body, or empty array on no body / parse error.
-     */
     function sc_api_auth_read_body() {
         $raw = '';
         if (isset($_SERVER['REQUEST_METHOD'])
@@ -196,12 +167,9 @@ if (!function_exists('sc_api_auth_read_body')) {
     }
 }
 
+/* sc_api_auth_client_ip()
+ *   Return the current client's IP (REMOTE_ADDR), or "0.0.0.0". */
 if (!function_exists('sc_api_auth_client_ip')) {
-    /**
-     * Return the current client's IP (REMOTE_ADDR), or "0.0.0.0".
-     *
-     * @return string IP string.
-     */
     function sc_api_auth_client_ip() {
         $ip = '';
         if (isset($_SERVER['REMOTE_ADDR'])
@@ -215,17 +183,9 @@ if (!function_exists('sc_api_auth_client_ip')) {
     }
 }
 
+/* sc_api_auth_locked_until($ip, $cfg)
+ *   Unix timestamp at which the IP's current lockout expires. */
 if (!function_exists('sc_api_auth_locked_until')) {
-    /**
-     * Unix timestamp at which the IP's current lockout expires.
-     *
-     * Computed from the last-failure timestamp recorded in the
-     * lockout cache plus the configured lockout window.
-     *
-     * @param string $ip  Client IP.
-     * @param array  $cfg Parsed config.
-     * @return int Unix timestamp.
-     */
     function sc_api_auth_locked_until($ip, $cfg) {
         $window = isset($cfg['auth']['lockout_seconds'])
                   ? (int)$cfg['auth']['lockout_seconds'] : 300;
@@ -240,14 +200,9 @@ if (!function_exists('sc_api_auth_locked_until')) {
     }
 }
 
+/* sc_api_auth_attempts_left($ip, $cfg)
+ *   Number of remaining attempts before the client IP is locked. */
 if (!function_exists('sc_api_auth_attempts_left')) {
-    /**
-     * Number of remaining attempts before the client IP is locked.
-     *
-     * @param string $ip  Client IP.
-     * @param array  $cfg Parsed config.
-     * @return int Non-negative attempt count.
-     */
     function sc_api_auth_attempts_left($ip, $cfg) {
         $max = isset($cfg['auth']['max_attempts'])
                ? (int)$cfg['auth']['max_attempts'] : 5;
@@ -269,15 +224,10 @@ if (!function_exists('sc_api_auth_attempts_left')) {
     }
 }
 
+/* sc_api_auth_set_status($status)
+ *   Send a non-200 HTTP status line (PHP 5.2 lacks
+ *   http_response_code()). */
 if (!function_exists('sc_api_auth_set_status')) {
-    /**
-     * Send a non-200 HTTP status line.
-     *
-     * PHP 5.2 lacks http_response_code(); we use the header() form
-     * with the server's negotiated protocol prefix instead.
-     *
-     * @param int $status Numeric HTTP status code (e.g. 429).
-     */
     function sc_api_auth_set_status($status) {
         if (headers_sent()) {
             return;
@@ -308,26 +258,21 @@ if (!function_exists('sc_api_auth_set_status')) {
     }
 }
 
+/* sc_api_auth_handle_login($cfg, $body)
+ *   "login" action handler.
+ *
+ *   On locked IP: 429 + locked payload (no password check).
+ *   On correct password: clear lockout counter, log success, set
+ *   HttpOnly cookie, return ok+lang.
+ *   On wrong password: increment counter, log failure, return
+ *   invalid+attempts_left. */
 if (!function_exists('sc_api_auth_handle_login')) {
-    /**
-     * "login" action handler.
-     *
-     * On locked IP: 429 + locked payload (no password check).
-     * On correct password: clear lockout counter, log success,
-     * set HttpOnly cookie, return ok+lang.
-     * On wrong password: increment lockout counter, log failure,
-     * return invalid+attempts_left.
-     *
-     * @param array $cfg  Parsed config.
-     * @param array $body Decoded request body.
-     * @return array Response payload.
-     */
     function sc_api_auth_handle_login($cfg, $body) {
         $password = '';
         if (isset($body['password']) && is_string($body['password'])) {
             $password = $body['password'];
         } elseif (isset($body['password'])) {
-            // Tolerate non-string (e.g. number); cast without echo.
+            /* tolerate non-string (e.g. number); cast without echo. */
             $password = (string)$body['password'];
         }
         $ip = sc_api_auth_client_ip();
@@ -359,26 +304,18 @@ if (!function_exists('sc_api_auth_handle_login')) {
     }
 }
 
+/* sc_api_auth_handle_logout($cfg)
+ *   "logout" action handler. Clears the session cookie. */
 if (!function_exists('sc_api_auth_handle_logout')) {
-    /**
-     * "logout" action handler. Clears the session cookie.
-     *
-     * @param array $cfg Parsed config (unused; reserved).
-     * @return array {ok: true}
-     */
     function sc_api_auth_handle_logout($cfg) {
         sc_api_auth_clear_cookie($cfg);
         return array('ok' => true);
     }
 }
 
+/* sc_api_auth_handle_check($cfg)
+ *   "check" action handler. Returns the current session state. */
 if (!function_exists('sc_api_auth_handle_check')) {
-    /**
-     * "check" action handler. Returns the current session state.
-     *
-     * @param array $cfg Parsed config.
-     * @return array ok+lang when authenticated; not_logged_in otherwise.
-     */
     function sc_api_auth_handle_check($cfg) {
         if (sc_api_auth_verify_cookie($cfg)) {
             return array(
@@ -390,16 +327,10 @@ if (!function_exists('sc_api_auth_handle_check')) {
     }
 }
 
+/* sc_api_auth_dispatch()
+ *   Single entry point: parse the body and route to the action
+ *   handler. Defaults to "login" when the body has no action. */
 if (!function_exists('sc_api_auth_dispatch')) {
-    /**
-     * Single entry point: parse the body and route to the action handler.
-     *
-     * Defaults to "login" when the body has no action field, so a
-     * client that posts just {"password": "..."} works as expected.
-     * Non-POST requests get method_not_allowed.
-     *
-     * @return array Response payload (echoed as JSON by the caller).
-     */
     function sc_api_auth_dispatch() {
         $method = isset($_SERVER['REQUEST_METHOD'])
                   ? strtoupper((string)$_SERVER['REQUEST_METHOD']) : 'GET';

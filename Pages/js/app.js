@@ -1,25 +1,21 @@
-/**
- * stoneChat Pages/js/app.js
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/js/app.js
  *
  * Application bootstrap and UI glue for the post-login chat page.
- *
- * IE6-compatible (ES3 / ES5 only):
- *   - no fetch, no Promise, no arrow functions, no let/const
- *   - no Array.prototype.forEach / .map (use for-loops)
- *   - XHR-based API access via SC.Api (api.js)
- *   - DOM events wired with attachEvent / addEventListener fallback
- *   - No localStorage (state lives in window.SC.App module variables)
+ * IE6-compatible (ES3 / ES5 only): no fetch / Promise / arrow / let
+ * / const; no Array.forEach / .map; XHR via SC.Api (api.js); DOM
+ * events wired with attachEvent / addEventListener fallback; no
+ * localStorage (state lives in window.SC.App module variables).
  *
  * Public namespace: window.SC.App (alias: window.scApp)
  *
  * Methods
- * -------
  *   bootstrap()              page-load entry point (auto-called)
  *   renderHistoryList(chats) sidebar list
  *   renderTopMenu(provider)  top status row
  *   showNewChatDialog()      modal: pick a provider to start a new chat
  *   showAboutDialog()        modal: protocol / author / GitHub
- *   openConfigFile()         degraded hint (browser cannot open local file)
+ *   openConfigFile()         degraded hint (browser cannot open local)
  *   reloadConfig()           ask server to re-read CONF.ini, then reload
  *   deleteChat(chatId)       confirm then SC.Api.deleteChat
  *   renameChat(id, name)     SC.Api.renameChat
@@ -27,22 +23,11 @@
  *   logout()                 SC.Api.logout, then redirect to login page
  *
  * Expected DOM IDs (provided by chat.htm)
- * ---------------------------------------
- *   sc-logo                 header brand image / link -> opens About
- *   sc-lang-switcher        container for language buttons
- *   sc-new-chat-btn         "New chat" sidebar button
- *   sc-reload-config-btn    "Reload config" toolbar button
- *   sc-open-config-btn      "Open CONF.ini" button (degraded: hint only)
- *   sc-logout-btn           "Logout" button
- *   sc-history-list         <ul> sidebar list container
- *   sc-top-menu             top status row container
- *   sc-modal-mask           full-viewport overlay
- *   sc-modal-about          About dialog panel
- *   sc-modal-new-chat       New-chat dialog panel
- *   sc-about-body           body <div> inside About dialog
- *   sc-newchat-list         <ul> provider list inside New-chat dialog
- *   sc-modal-close          any close button inside a dialog
- */
+ *   sc-logo, sc-lang-switcher, sc-new-chat-btn, sc-reload-config-btn,
+ *   sc-open-config-btn, sc-logout-btn, sc-history-list, sc-top-menu,
+ *   sc-modal-mask, sc-modal-about, sc-modal-new-chat, sc-about-body,
+ *   sc-newchat-list, sc-modal-close
+ * ------------------------------------------------------------------------- */
 (function () {
     'use strict';
 

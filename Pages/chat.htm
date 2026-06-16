@@ -97,8 +97,8 @@
 
 <script type="text/javascript">
 //<![CDATA[
-/**
- * Pages/chat.htm page-load bootstrap.
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/chat.htm page-load bootstrap.
  *
  * Runs after all <script> tags have loaded and the DOM is parsed.
  *   1. Initialises SC.I18n (reads cookie + /api/config).
@@ -112,7 +112,7 @@
  *   - No fetch / Promise / localStorage
  *   - try/catch around every API call so a failure in step 1/2 does
  *     not abort step 3 (or vice versa)
- */
+ * ------------------------------------------------------------------------- */
 window.onload = function () {
   var SC = (typeof window.SC !== 'undefined' && window.SC) ? window.SC : null;
   var i18n = (SC && SC.I18n) ? SC.I18n

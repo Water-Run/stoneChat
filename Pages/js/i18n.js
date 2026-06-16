@@ -1,17 +1,19 @@
-/**
- * stoneChat client-side internationalization.
- * IE6-compatible (ES3 only): var/function, no JSON, no Array methods.
- * Cookie-based persistence (no localStorage).
+/* -------------------------------------------------------------------------
+ * stoneChat / Pages/js/i18n.js
+ *
+ * Client-side internationalization. IE6-compatible (ES3 only):
+ * var/function, no JSON, no Array methods. Cookie-based persistence
+ * (no localStorage).
  *
  * Public API (window.SC.I18n, alias window.scI18n):
- *   init(supportedLangs, defaultLang)   - bootstrap, reads 'sc_lang' cookie
- *   load(lang)                          - returns translation table
- *   apply()                             - walks DOM, replaces [data-i18n=key] text
- *   setLang(lang)                       - persists to cookie + reloads page
- *   getLang()                           - current language code
- *   t(key)                              - lookup with English fallback
- *   getLangSwitcherHTML()               - 8 language buttons
- */
+ *   init(supportedLangs, defaultLang)   bootstrap, reads sc_lang cookie
+ *   load(lang)                          returns translation table
+ *   apply()                             walks DOM, replaces text
+ *   setLang(lang)                       persists to cookie + reloads page
+ *   getLang()                           current language code
+ *   t(key)                              lookup with English fallback
+ *   getLangSwitcherHTML()               8 language buttons
+ * ------------------------------------------------------------------------- */
 (function () {
   var SC = window.SC || {};
 

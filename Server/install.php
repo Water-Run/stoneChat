@@ -1,12 +1,11 @@
 <?php
-/**
- * stoneChat Server installer handler (Server/install.php).
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/install.php
  *
- * Invoked by INSTALL.bat via the PHP CLI to perform backend
- * initialization after the file copy step. Refuses to run in non-CLI
- * mode, validates the PHP runtime, ensures the runtime directories
- * exist, validates CONF.ini, and creates LOGIN.txt with restrictive
- * permissions.
+ * Invoked by INSTALL.bat via the PHP CLI to perform backend init
+ * after the file copy step. Refuses non-CLI mode, validates the PHP
+ * runtime, ensures runtime directories, validates CONF.ini, and
+ * creates LOGIN.txt with restrictive permissions.
  *
  * Usage (CLI):
  *   php Server/install.php             # defaults to --all
@@ -16,141 +15,102 @@
  *   php Server/install.php --init-langs
  *   php Server/install.php --validate
  *
- * Output format (one line per step):
+ * Output (one line per step):
  *   OK:<step>
  *   FAIL:<step>:<reason>
  *
  * Exit codes:
  *   0   every requested step succeeded
- *   1   one or more steps failed, or pre-flight guard failed
+ *   1   one or more steps failed, or a pre-flight guard failed
  *
- * Compatible with PHP 5.2 (no closures, no [] array syntax, no
- * namespaces, no late static binding, no json_last_error).
- */
+ * PHP 5.2 compatible (no closures, no [] array syntax, no namespaces,
+ * no late static binding, no json_last_error).
+ * ------------------------------------------------------------------------- */
 
-// =============================================================
-// Pre-flight guards (run before any helper is used; both exit on
-// failure so they MUST sit above the function definitions).
-// =============================================================
+/* ---- pre-flight guards (must run above the function defs) ------- */
 
-// Guard 1: refuse to run in non-CLI mode (web request, CGI, etc.).
+/* Guard 1: refuse to run in non-CLI mode (web request, CGI, ...). */
 if (!defined('PHP_SAPI') || (PHP_SAPI !== 'cli' && PHP_SAPI !== 'cli-server')) {
     echo 'FAIL:cli_only:must_run_from_command_line' . "\n";
     exit(1);
 }
 
-// Guard 2: require PHP 5.2 or newer.
+/* Guard 2: require PHP 5.2 or newer. */
 if (!defined('PHP_VERSION')
     || !function_exists('version_compare')
     || !version_compare(PHP_VERSION, '5.2.0', '>=')) {
     $v = defined('PHP_VERSION') ? PHP_VERSION : 'unknown';
-    // Dots are not safe inside the reason token; replace with '_'.
+    /* dots are not safe inside the reason token; replace with '_'. */
     echo 'FAIL:php_version:php_' . str_replace('.', '_', (string)$v)
        . '_is_below_5_2' . "\n";
     exit(1);
 }
 
-// Pull in the config loader/validator we depend on. config.php
-// already guards its own functions with function_exists checks so
-// repeated inclusion is a no-op.
 require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'boot_check.php';
 if (function_exists('sc_strict_environment_check')) {
     sc_strict_environment_check();
 }
 require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.php';
 
-// =============================================================
-// Path helpers
-// =============================================================
+/* ---- path helpers ----------------------------------------------- */
 
+/* sc_install_project_root()
+ *   Absolute path of the project root (parent of Server/). */
 if (!function_exists('sc_install_project_root')) {
-    /**
-     * Absolute path of the project root (parent of Server/).
-     *
-     * @return string Absolute path with trailing separator.
-     */
     function sc_install_project_root() {
         return dirname(__FILE__) . DIRECTORY_SEPARATOR . '..';
     }
 }
 
+/* sc_install_ini_path()
+ *   Absolute path to CONF.ini in the project root. */
 if (!function_exists('sc_install_ini_path')) {
-    /**
-     * Absolute path to CONF.ini in the project root.
-     *
-     * @return string Absolute path.
-     */
     function sc_install_ini_path() {
         return sc_install_project_root() . DIRECTORY_SEPARATOR . 'CONF.ini';
     }
 }
 
+/* sc_install_history_dir()
+ *   Absolute path to the HISTORY/ runtime directory. */
 if (!function_exists('sc_install_history_dir')) {
-    /**
-     * Absolute path to the HISTORY/ runtime directory.
-     *
-     * @return string Absolute path.
-     */
     function sc_install_history_dir() {
         return sc_install_project_root() . DIRECTORY_SEPARATOR . 'HISTORY';
     }
 }
 
+/* sc_install_langs_dir()
+ *   Absolute path to Server/langs/. */
 if (!function_exists('sc_install_langs_dir')) {
-    /**
-     * Absolute path to Server/langs/.
-     *
-     * @return string Absolute path.
-     */
     function sc_install_langs_dir() {
         return dirname(__FILE__) . DIRECTORY_SEPARATOR . 'langs';
     }
 }
 
+/* sc_install_login_log_path()
+ *   Absolute path to LOGIN.txt in the project root. */
 if (!function_exists('sc_install_login_log_path')) {
-    /**
-     * Absolute path to LOGIN.txt in the project root.
-     *
-     * @return string Absolute path.
-     */
     function sc_install_login_log_path() {
         return sc_install_project_root() . DIRECTORY_SEPARATOR . 'LOGIN.txt';
     }
 }
 
-// =============================================================
-// Platform helper
-// =============================================================
+/* ---- platform helper -------------------------------------------- */
 
+/* sc_install_is_windows()
+ *   True when the host OS is Windows. */
 if (!function_exists('sc_install_is_windows')) {
-    /**
-     * True when the host OS is Windows (XP, Vista, 7, 10, 11).
-     *
-     * Used to choose between chmod (Unix) and icacls (Windows) when
-     * tightening permissions on LOGIN.txt.
-     *
-     * @return bool
-     */
     function sc_install_is_windows() {
         $os = defined('PHP_OS') ? PHP_OS : '';
         return (strtoupper(substr((string)$os, 0, 3)) === 'WIN');
     }
 }
 
-// =============================================================
-// Step primitives
-// =============================================================
+/* ---- step primitives -------------------------------------------- */
 
+/* sc_install_ensure_dir($path)
+ *   Create a directory (recursively) if missing; otherwise no-op.
+ *   Returns array(bool ok, string reason). */
 if (!function_exists('sc_install_ensure_dir')) {
-    /**
-     * Create a directory (recursively) if missing; otherwise no-op.
-     *
-     * Idempotent: when the directory already exists the function
-     * returns true with reason 'already_exists'.
-     *
-     * @param string $path Absolute directory path.
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_ensure_dir($path) {
         if (!is_string($path) || $path === '') {
             return array(false, 'invalid_path');
@@ -158,8 +118,8 @@ if (!function_exists('sc_install_ensure_dir')) {
         if (is_dir($path)) {
             return array(true, 'already_exists');
         }
-        // mkdir() can succeed even when the final entry already
-        // exists (race with another process), so verify after.
+        /* mkdir() can succeed even when the final entry already
+         * exists (race with another process), so verify after. */
         if (!@mkdir($path, 0777, true)) {
             if (!is_dir($path)) {
                 return array(false, 'mkdir_failed');
@@ -169,17 +129,12 @@ if (!function_exists('sc_install_ensure_dir')) {
     }
 }
 
+/* sc_install_init_config()
+ *   Create a stub CONF.ini if none exists. Never overwrites an
+ *   existing config; returns 'already_exists' when one is present
+ *   and readable. The stub contains the minimum keys the validator
+ *   needs so the user can run --validate immediately. */
 if (!function_exists('sc_install_init_config')) {
-    /**
-     * Create a stub CONF.ini if none exists.
-     *
-     * Never overwrites an existing config; returns 'already_exists'
-     * when one is present and readable. The stub contains the
-     * minimum keys sc_validate_config() looks for so the user can
-     * run `--validate` immediately and see only the real errors.
-     *
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_init_config() {
         $ini = sc_install_ini_path();
         if (is_file($ini) && is_readable($ini)) {
@@ -214,16 +169,11 @@ if (!function_exists('sc_install_init_config')) {
     }
 }
 
+/* sc_install_validate_config()
+ *   Load CONF.ini and run sc_validate_config(). Error codes are
+ *   joined with commas so the caller (INSTALL.bat) can echo one
+ *   line per failure. Secrets are never echoed. */
 if (!function_exists('sc_install_validate_config')) {
-    /**
-     * Load CONF.ini and run sc_validate_config().
-     *
-     * Every error code returned by the validator is joined with
-     * commas so the caller (INSTALL.bat) can echo one line per
-     * failure. The validator never echoes secret values itself.
-     *
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_validate_config() {
         $ini = sc_install_ini_path();
         if (!is_file($ini) || !is_readable($ini)) {
@@ -250,52 +200,41 @@ if (!function_exists('sc_install_validate_config')) {
     }
 }
 
+/* sc_install_create_history_dir()
+ *   Convenience wrapper: create HISTORY/ if missing. */
 if (!function_exists('sc_install_create_history_dir')) {
-    /**
-     * Convenience wrapper: create HISTORY/ if missing.
-     *
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_create_history_dir() {
         return sc_install_ensure_dir(sc_install_history_dir());
     }
 }
 
+/* sc_install_create_langs_dir()
+ *   Convenience wrapper: create Server/langs/ if missing. */
 if (!function_exists('sc_install_create_langs_dir')) {
-    /**
-     * Convenience wrapper: create Server/langs/ if missing.
-     *
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_create_langs_dir() {
         return sc_install_ensure_dir(sc_install_langs_dir());
     }
 }
 
+/* sc_install_restrict_login_log($path)
+ *   Apply restrictive permissions to an existing file.
+ *
+ *   Unix: chmod 0600 -- owner read/write only. Anything stricter
+ *   (e.g. 0400) would prevent the web server from appending login
+ *   attempts, which is the whole point of LOGIN.txt.
+ *   Win:  icacls strips inherited ACEs and grants only the current
+ *   user Read+Write. icacls may not be present on stock Windows XP;
+ *   in that case the file is still reported as OK because the
+ *   artefact (LOGIN.txt) itself is the most important outcome. */
 if (!function_exists('sc_install_restrict_login_log')) {
-    /**
-     * Apply restrictive permissions to an existing file.
-     *
-     * Unix:  chmod 0600 -- owner read/write only. Anything stricter
-     *        (e.g. 0400) would prevent the web server from appending
-     *        login attempts, which is the whole point of LOGIN.txt.
-     * Win:   icacls strips inherited ACEs and grants only the
-     *        current user Read+Write. icacls may not be present on
-     *        stock Windows XP; in that case the file is still
-     *        reported as OK because the artefact itself (LOGIN.txt)
-     *        is the most important outcome of this step.
-     *
-     * @param string $path Absolute file path.
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_restrict_login_log($path) {
         if (!is_string($path) || $path === '' || !is_file($path)) {
             return array(false, 'login_txt_missing');
         }
         if (sc_install_is_windows()) {
-            // Single-quoted PHP literals keep the backslash-free
-            // string clean; $path is already a Windows path with
-            // backslashes that are literal in the resulting command.
+            /* single-quoted PHP literals keep the backslash-free
+             * string clean; $path is already a Windows path with
+             * backslashes that are literal in the resulting command. */
             $cmd = 'icacls "' . $path . '" /inheritance:r '
                  . '/grant:r "%USERNAME%:(R,W)" 2>NUL';
             @shell_exec($cmd);
@@ -308,16 +247,10 @@ if (!function_exists('sc_install_restrict_login_log')) {
     }
 }
 
+/* sc_install_create_login_log()
+ *   Create an empty LOGIN.txt with restrictive permissions.
+ *   Idempotent: existing files are re-permissioned in place. */
 if (!function_exists('sc_install_create_login_log')) {
-    /**
-     * Create an empty LOGIN.txt with restrictive permissions.
-     *
-     * Idempotent: when the file already exists we just (re-)apply
-     * the restrictive ACL. The parent directory is created first so
-     * the write never fails because of a missing intermediate dir.
-     *
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_create_login_log() {
         $path = sc_install_login_log_path();
         $dir = dirname($path);
@@ -335,20 +268,12 @@ if (!function_exists('sc_install_create_login_log')) {
     }
 }
 
-// =============================================================
-// CLI parsing & step dispatch
-// =============================================================
+/* ---- CLI parsing & step dispatch -------------------------------- */
 
+/* sc_install_parse_flags($argv)
+ *   Extract the recognised flags. Unknown flags are silently
+ *   ignored so the script stays forward-compatible. */
 if (!function_exists('sc_install_parse_flags')) {
-    /**
-     * Extract the recognized flags from $argv.
-     *
-     * Unknown flags are silently ignored so the script remains
-     * forward-compatible with future INSTALL.bat callers.
-     *
-     * @param array $argv Raw $argv from PHP.
-     * @return array List of recognized flag strings.
-     */
     function sc_install_parse_flags($argv) {
         if (!is_array($argv)) {
             return array();
@@ -361,7 +286,7 @@ if (!function_exists('sc_install_parse_flags')) {
             '--validate',
         );
         $found = array();
-        // Skip the script name in $argv[0] if present.
+        /* skip the script name in $argv[0] if present. */
         $start = (isset($argv[0]) && is_string($argv[0])) ? 1 : 0;
         $n = count($argv);
         for ($i = $start; $i < $n; $i++) {
@@ -377,17 +302,11 @@ if (!function_exists('sc_install_parse_flags')) {
     }
 }
 
+/* sc_install_select_steps($flags)
+ *   Map recognised flags to step names. With no recognised flag
+ *   (e.g. INSTALL.bat invokes `php install.php` with no args) we
+ *   run every step ("do everything"). */
 if (!function_exists('sc_install_select_steps')) {
-    /**
-     * Map recognized flags to a list of step names.
-     *
-     * Default behavior: when no recognized flag is present (e.g.
-     * INSTALL.bat invokes `php install.php` with no arguments) we
-     * run every step. This matches the "do everything" call site.
-     *
-     * @param array $flags Recognized flags from sc_install_parse_flags().
-     * @return array List of step names to execute, in order.
-     */
     function sc_install_select_steps($flags) {
         $all = array(
             'config_init',
@@ -419,16 +338,11 @@ if (!function_exists('sc_install_select_steps')) {
     }
 }
 
+/* sc_install_run_step($step)
+ *   Execute one named step and return the (ok, reason) pair.
+ *   Unknown step names are reported as failures so typos in
+ *   sc_install_select_steps() never silently no-op. */
 if (!function_exists('sc_install_run_step')) {
-    /**
-     * Execute one named step and return the (ok, reason) pair.
-     *
-     * Unknown step names are reported as failures so typos in
-     * sc_install_select_steps() never silently no-op.
-     *
-     * @param string $step Step name.
-     * @return array array(bool ok, string reason).
-     */
     function sc_install_run_step($step) {
         switch ($step) {
             case 'config_init':
@@ -447,9 +361,7 @@ if (!function_exists('sc_install_run_step')) {
     }
 }
 
-// =============================================================
-// Main runner
-// =============================================================
+/* ---- main runner ------------------------------------------------ */
 
 $flags = (isset($argv) && is_array($argv))
        ? sc_install_parse_flags($argv)

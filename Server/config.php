@@ -1,29 +1,26 @@
 <?php
-/**
- * stoneChat Server config loader and validator.
+/* -------------------------------------------------------------------------
+ * stoneChat / Server/config.php
  *
- * Public functions (all sc_-prefixed, each wrapped in a function_exists guard):
- *   sc_load_config($ini_path)
- *       Parse CONF.ini into a nested array; empty array on any failure.
- *   sc_load_providers($ini_path)
- *       Extract all [Provider N] sections as a normalized list
- *       (id/label/type/api_base/api_key/model), ordered by N.
- *   sc_validate_config($cfg)
- *       Check a parsed config for required keys and provider integrity.
- *       Returns an array of short error codes (empty array on success).
+ * Load and validate CONF.ini. Public helpers (sc_-prefixed, guarded
+ * with function_exists for include-twice safety):
  *
- * Compatible with PHP 5.2 (no closures, no [] array syntax, no namespaces).
- */
+ *   sc_load_config($path)              parse CONF.ini; empty on failure
+ *   sc_load_providers($path)           [Provider N] -> normalized list
+ *   sc_provider_section_name($name)    is the section a "Provider N"?
+ *   sc_is_placeholder_password($pw)    is the password an unfilled stub?
+ *   sc_validate_path_resolve($p, $b)   resolve a path under a base
+ *   sc_validate_config($cfg)           check keys; error code list
+ *
+ * PHP 5.2 compatible.
+ * ------------------------------------------------------------------------- */
 
+/* sc_load_config($ini_path)
+ *   Parse CONF.ini into a nested array; empty array on any failure. */
 if (!function_exists('sc_load_config')) {
-    /**
-     * Load the stoneChat INI config file as a nested array.
-     *
-     * @param string $ini_path Absolute or relative path to CONF.ini.
-     * @return array Parsed config, or empty array on any failure.
-     */
     function sc_load_config($ini_path) {
-        if (!is_string($ini_path) || !is_file($ini_path) || !is_readable($ini_path)) {
+        if (!is_string($ini_path) || !is_file($ini_path)
+            || !is_readable($ini_path)) {
             return array();
         }
         $parsed = @parse_ini_file($ini_path, true);
@@ -34,13 +31,9 @@ if (!function_exists('sc_load_config')) {
     }
 }
 
+/* sc_provider_section_name($name)
+ *   Does the section name follow the "Provider N" convention? */
 if (!function_exists('sc_provider_section_name')) {
-    /**
-     * Test whether a section name follows the "Provider N" convention.
-     *
-     * @param string $name Section name from parse_ini_file().
-     * @return bool true if the name is "Provider" followed by one or more digits.
-     */
     function sc_provider_section_name($name) {
         if (!is_string($name)) {
             return false;
@@ -49,25 +42,21 @@ if (!function_exists('sc_provider_section_name')) {
     }
 }
 
+/* sc_load_providers($ini_path)
+ *   Read [Provider N] sections from CONF.ini as a normalized list.
+ *
+ *   Each provider is array(
+ *     'id'       => string, // display id
+ *     'label'    => string, // display name
+ *     'type'     => string, // 'openai' or 'anthropic'
+ *     'api_base' => string,
+ *     'api_key'  => string,
+ *     'model'    => string,
+ *   )
+ *
+ *   Returned in numeric order (Provider 1, 2, ...). Sections with
+ *   non-array bodies are skipped. */
 if (!function_exists('sc_load_providers')) {
-    /**
-     * Load [Provider N] sections from CONF.ini as a normalized list.
-     *
-     * Each provider is array(
-     *   'id'       => string,  // from "id"       (display id)
-     *   'label'    => string,  // from "label"    (display name)
-     *   'type'     => string,  // from "type"     ("openai" or "anthropic")
-     *   'api_base' => string,  // from "api_base"
-     *   'api_key'  => string,  // from "api_key"
-     *   'model'    => string,  // from "model"
-     * )
-     *
-     * Sections are returned in numeric order (Provider 1 first, then 2, ...).
-     * Sections with non-array bodies are skipped.
-     *
-     * @param string $ini_path Absolute or relative path to CONF.ini.
-     * @return array List of provider arrays; empty array on failure or no providers.
-     */
     function sc_load_providers($ini_path) {
         $cfg = sc_load_config($ini_path);
         if (!is_array($cfg) || empty($cfg)) {
@@ -93,32 +82,32 @@ if (!function_exists('sc_load_providers')) {
         $providers = array();
         foreach ($buckets as $section_data) {
             $providers[] = array(
-                'id'       => isset($section_data['id'])       ? (string)$section_data['id']       : '',
-                'label'    => isset($section_data['label'])    ? (string)$section_data['label']    : '',
-                'type'     => isset($section_data['type'])     ? (string)$section_data['type']     : '',
-                'api_base' => isset($section_data['api_base']) ? (string)$section_data['api_base'] : '',
-                'api_key'  => isset($section_data['api_key'])  ? (string)$section_data['api_key']  : '',
-                'model'    => isset($section_data['model'])    ? (string)$section_data['model']    : '',
+                'id'       => isset($section_data['id'])
+                              ? (string)$section_data['id'] : '',
+                'label'    => isset($section_data['label'])
+                              ? (string)$section_data['label'] : '',
+                'type'     => isset($section_data['type'])
+                              ? (string)$section_data['type'] : '',
+                'api_base' => isset($section_data['api_base'])
+                              ? (string)$section_data['api_base'] : '',
+                'api_key'  => isset($section_data['api_key'])
+                              ? (string)$section_data['api_key'] : '',
+                'model'    => isset($section_data['model'])
+                              ? (string)$section_data['model'] : '',
             );
         }
         return $providers;
     }
 }
 
+/* sc_is_placeholder_password($password)
+ *   Heuristic: is the password value an unfilled CONF.ini stub?
+ *
+ *   Empty strings, "****", and the "YOUR_*_HERE" stub pattern are
+ *   treated as placeholders. Mirrors the api/providers.php check
+ *   so the same strings are flagged the same way in both
+ *   validators and the public /api/config endpoint. */
 if (!function_exists('sc_is_placeholder_password')) {
-    /**
-     * Heuristic: is this password value an unfilled CONF.ini placeholder?
-     *
-     * Treats empty strings, "****", and the common "YOUR_*_HERE" stub
-     * pattern as placeholders. Anything else is considered "set".
-     *
-     * Mirrors sc_api_providers_is_placeholder_key() (in Server/api/
-     * providers.php) so the same strings are flagged the same way in
-     * both validators and the public /api/config endpoint.
-     *
-     * @param mixed $password Raw password value.
-     * @return bool true if the value should be treated as unset.
-     */
     function sc_is_placeholder_password($password) {
         if (!is_string($password)) {
             return true;
@@ -134,24 +123,19 @@ if (!function_exists('sc_is_placeholder_password')) {
     }
 }
 
+/* sc_validate_path_resolve($path, $base_dir)
+ *   Resolve a CONF.ini-relative path against the project root,
+ *   normalising any ".." segments so is_file() sees a real path.
+ *
+ *   Handles:
+ *     - Windows drive-letter absolute paths ("C:\..." or "C:/...")
+ *     - POSIX absolute paths ("/...")
+ *     - Any path starting with "\" (Windows root-relative)
+ *     - Relative paths: joined onto $base_dir, walked to fold
+ *       away "." and ".." segments.
+ *
+ *   Returns the absolute path; the original $path on failure. */
 if (!function_exists('sc_validate_path_resolve')) {
-    /**
-     * Resolve a CONF.ini-relative path against the project root,
-     * normalizing any ".." segments so is_file() sees a real path.
-     *
-     * Independent of ModernNetwork/proxy.php::sc_resolve_path() so
-     * the config validator does not have to depend on a transport
-     * module. Handles:
-     *   - Windows drive-letter absolute paths ("C:\..." or "C:/...")
-     *   - POSIX absolute paths ("/...")
-     *   - Any path starting with "\" (Windows root-relative)
-     *   - Relative paths: joined onto $base_dir, then walked to
-     *     fold away "." and ".." segments.
-     *
-     * @param string $path     Raw path from CONF.ini.
-     * @param string $base_dir Project root (parent of Server/).
-     * @return string          Absolute path; original $path on failure.
-     */
     function sc_validate_path_resolve($path, $base_dir) {
         if (!is_string($path) || $path === '') {
             return '';
@@ -168,18 +152,17 @@ if (!function_exists('sc_validate_path_resolve')) {
         $base = rtrim($base_dir, '/\\');
         $sep  = (strpos($base, '\\') !== false)
                 ? '\\' : DIRECTORY_SEPARATOR;
-        $joined = $base . $sep
-                . str_replace('/', $sep, $path);
-        // Walk segments to fold away "." and "..".
+        $joined = $base . $sep . str_replace('/', $sep, $path);
+        /* walk segments to fold away "." and ".." */
         $is_unc = (strlen($base) >= 2 && $base[1] === ':');
         $prefix = '';
         if ($is_unc) {
             $prefix = substr($joined, 0, 2) . $sep;
-        } elseif (strlen($joined) > 0 && ($joined[0] === '/' || $joined[0] === '\\')) {
+        } elseif (strlen($joined) > 0
+                  && ($joined[0] === '/' || $joined[0] === '\\')) {
             $prefix = $joined[0];
         }
-        $body   = $is_unc
-                ? substr($joined, 2) : $joined;
+        $body   = $is_unc ? substr($joined, 2) : $joined;
         $body   = ltrim($body, '/\\');
         $parts  = explode($sep, $body);
         $stack  = array();
@@ -202,40 +185,34 @@ if (!function_exists('sc_validate_path_resolve')) {
     }
 }
 
+/* sc_validate_config($cfg)
+ *   Check a parsed stoneChat config for required keys and provider
+ *   integrity. Returns an array of short error codes (empty on
+ *   success); secret values are never echoed.
+ *
+ *   Required:
+ *     - [server].port       (non-empty)
+ *     - [auth].password     (non-empty AND not a placeholder)
+ *
+ *   Soft checks (reported but not fatal here; the installer/UI may
+ *   downgrade them to warnings):
+ *     - [paths].stunnel / [paths].ca_cert: file exists when set
+ *     - each [Provider N].api_key is non-placeholder
+ *     - each [Provider N].type is one of: "openai", "anthropic" */
 if (!function_exists('sc_validate_config')) {
-    /**
-     * Validate a parsed stoneChat config array.
-     *
-     * Required keys:
-     *   - [server].port   (non-empty)
-     *   - [auth].password (non-empty AND not a placeholder)
-     *
-     * Soft checks (reported but not fatal in this validator; the
-     * installer/UI may downgrade them to warnings):
-     *   - [paths].stunnel  file exists, when set
-     *   - [paths].ca_cert  file exists, when set
-     *   - each [Provider N].api_key is non-placeholder
-     *   - each [Provider N].type is one of: "openai", "anthropic"
-     *
-     * Error messages are short codes; the secret values themselves are
-     * never echoed.
-     *
-     * @param array $cfg Parsed config (output of sc_load_config()).
-     * @return array List of error code strings; empty array on success.
-     */
     function sc_validate_config($cfg) {
         $errors = array();
         if (!is_array($cfg)) {
             return array('config_not_array');
         }
-        // [server].port must be present and non-empty.
+        /* [server].port must be present and non-empty. */
         $has_port = isset($cfg['server']) && is_array($cfg['server'])
                     && isset($cfg['server']['port'])
                     && (string)$cfg['server']['port'] !== '';
         if (!$has_port) {
             $errors[] = 'missing_server_port';
         }
-        // [auth].password must be present, non-empty, and not a placeholder.
+        /* [auth].password must be present, non-empty, not a placeholder. */
         $has_pass = false;
         $pass_placeholder = true;
         if (isset($cfg['auth']) && is_array($cfg['auth'])
@@ -251,15 +228,16 @@ if (!function_exists('sc_validate_config')) {
         } elseif ($pass_placeholder) {
             $errors[] = 'auth_password_is_placeholder';
         }
-        // [paths].stunnel, [paths].ca_cert: soft-check existence when set.
-        // CONF.ini stores these as either absolute or relative paths.
-        // The historical convention is that they are relative to the
-        // Server/ subdirectory (i.e. one level deeper than the
-        // project root), because that is where the ModernNetwork
-        // tunnel code that consumes them actually runs. We therefore
-        // resolve against dirname(__FILE__) (== Server/) and then
-        // call realpath() so any literal ".." segments collapse to
-        // a real OS path that is_file() can verify.
+        /* [paths].stunnel / [paths].ca_cert: soft-check existence.
+         * CONF.ini stores these as either absolute or relative
+         * paths. The historical convention is that they are
+         * relative to the Server/ subdirectory (one level deeper
+         * than the project root), because that is where the
+         * ModernNetwork tunnel code that consumes them actually
+         * runs. We therefore resolve against dirname(__FILE__)
+         * (== Server/) and then call realpath() so any literal
+         * ".." segments collapse to a real OS path that is_file()
+         * can verify. */
         if (isset($cfg['paths']) && is_array($cfg['paths'])) {
             $resolve_base = dirname(__FILE__);
             if (isset($cfg['paths']['stunnel'])
@@ -291,7 +269,8 @@ if (!function_exists('sc_validate_config')) {
                 }
             }
         }
-        // Provider sections: each must declare an api_key and a supported type.
+        /* Provider sections: each must declare an api_key and a
+         * supported type. */
         $supported_types = array('openai' => true, 'anthropic' => true);
         foreach ($cfg as $section_name => $section_data) {
             if (!sc_provider_section_name($section_name)) {
@@ -301,13 +280,15 @@ if (!function_exists('sc_validate_config')) {
                 $errors[] = $section_name . '_not_section';
                 continue;
             }
-            $key = isset($section_data['api_key']) ? (string)$section_data['api_key'] : '';
+            $key = isset($section_data['api_key'])
+                   ? (string)$section_data['api_key'] : '';
             if ($key === '') {
                 $errors[] = $section_name . '_missing_api_key';
             } elseif (sc_is_placeholder_password($key)) {
                 $errors[] = $section_name . '_api_key_is_placeholder';
             }
-            $type = isset($section_data['type']) ? strtolower(trim((string)$section_data['type'])) : '';
+            $type = isset($section_data['type'])
+                    ? strtolower(trim((string)$section_data['type'])) : '';
             if ($type === '' || !isset($supported_types[$type])) {
                 $errors[] = $section_name . '_invalid_type';
             }
