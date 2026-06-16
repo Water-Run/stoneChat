@@ -110,3 +110,33 @@ if (!function_exists('sc_is_modern_windows')) {
         return $cached;
     }
 }
+
+if (!function_exists('sc_strict_environment_check')) {
+    /**
+     * Strictly verify that the current runtime environment is the expected retro Windows environment.
+     * Throws an exception or exits with an error on failure.
+     */
+    function sc_strict_environment_check() {
+        // 1. Must be Windows
+        if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+            header('HTTP/1.1 500 Internal Server Error');
+            echo "Error: stoneChat is only supported on Windows operating systems (found: " . PHP_OS . ").\n";
+            exit(1);
+        }
+
+        // 3. Stunnel must be present at the configured path
+        $ini_path = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'CONF.ini';
+        $stunnel_path = 'C:\\Program Files\\stunnel\\bin\\stunnel.exe';
+        if (is_file($ini_path)) {
+            $raw = @parse_ini_file($ini_path, true);
+            if (is_array($raw) && isset($raw['paths']['stunnel']) && $raw['paths']['stunnel'] !== '') {
+                $stunnel_path = $raw['paths']['stunnel'];
+            }
+        }
+        if (!is_file($stunnel_path)) {
+            header('HTTP/1.1 500 Internal Server Error');
+            echo "Error: stunnel.exe not found at: " . $stunnel_path . ". stoneChat requires stunnel for HTTPS tunnel proxying.\n";
+            exit(1);
+        }
+    }
+}

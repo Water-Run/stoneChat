@@ -38,6 +38,10 @@
  */
 
 // ----- module includes -----
+require_once dirname(__FILE__) . '/../boot_check.php';
+if (function_exists('sc_strict_environment_check')) {
+    sc_strict_environment_check();
+}
 require_once dirname(__FILE__) . '/../config.php';
 require_once dirname(__FILE__) . '/../auth.php';
 require_once dirname(__FILE__) . '/../history.php';
@@ -159,6 +163,9 @@ if (!function_exists('sc_api_history_is_authorized')) {
         }
         if ($token === '') {
             return false;
+        }
+        if (function_exists('sc_auth_verify_token')) {
+            return sc_auth_verify_token($token, $cfg);
         }
         if (strlen($token) < 6 || strpos($token, 'scv1:') !== 0) {
             return false;

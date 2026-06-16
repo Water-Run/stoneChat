@@ -53,6 +53,10 @@ if (!defined('PHP_VERSION')
 // Pull in the config loader/validator we depend on. config.php
 // already guards its own functions with function_exists checks so
 // repeated inclusion is a no-op.
+require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'boot_check.php';
+if (function_exists('sc_strict_environment_check')) {
+    sc_strict_environment_check();
+}
 require_once dirname(__FILE__) . DIRECTORY_SEPARATOR . 'config.php';
 
 // =============================================================

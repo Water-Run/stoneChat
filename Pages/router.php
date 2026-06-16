@@ -18,12 +18,15 @@
  *   anything else      -> return false (PHP server returns 404)
  */
 
-// Pull in boot_check (provides sc_is_modern_windows) so the modern
-// super-modern.htm interlude can be triggered for capable hosts.
+// Pull in boot_check (provides sc_is_modern_windows) and run strict environment checks.
 $sc_boot_check = dirname(__FILE__) . '/../Server/boot_check.php';
 if (is_file($sc_boot_check)) {
     require_once $sc_boot_check;
+    if (function_exists('sc_strict_environment_check')) {
+        sc_strict_environment_check();
+    }
 }
+
 
 // 0) favicon.ico: short-circuit before the modern-interlude logic so
 //    the browser's automatic /favicon.ico probe never triggers a

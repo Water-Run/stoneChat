@@ -480,3 +480,41 @@ if (!function_exists('sc_auth_clear_failures')) {
         return sc_auth_reset_lock($cfg);
     }
 }
+
+if (!function_exists('sc_auth_generate_token')) {
+    /**
+     * Generate a signed session token.
+     *
+     * @param array $cfg Parsed config.
+     * @return string    Opaque signed token.
+     */
+    function sc_auth_generate_token($cfg) {
+        $password = (is_array($cfg) && isset($cfg['auth']['password'])) ? (string)$cfg['auth']['password'] : '';
+        $ts = time();
+        return 'scv1:' . $ts . ':' . md5($ts . '|' . $password);
+    }
+}
+
+if (!function_exists('sc_auth_verify_token')) {
+    /**
+     * Verify a stateless signed token.
+     *
+     * @param string $token Token value.
+     * @param array  $cfg   Parsed config.
+     * @return bool         true if valid.
+     */
+    function sc_auth_verify_token($token, $cfg) {
+        if (!is_string($token) || strlen($token) < 6 || strpos($token, 'scv1:') !== 0) {
+            return false;
+        }
+        $parts = explode(':', $token);
+        if (count($parts) !== 3) {
+            return false;
+        }
+        $ts = $parts[1];
+        $sig = $parts[2];
+        $password = (is_array($cfg) && isset($cfg['auth']['password'])) ? (string)$cfg['auth']['password'] : '';
+        $expected = md5($ts . '|' . $password);
+        return sc_auth_safe_eq($sig, $expected);
+    }
+}

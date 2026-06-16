@@ -54,6 +54,10 @@
  * Compatible with PHP 5.2.
  */
 
+require_once dirname(__FILE__) . '/../boot_check.php';
+if (function_exists('sc_strict_environment_check')) {
+    sc_strict_environment_check();
+}
 if (!function_exists('sc_load_providers')) {
     require_once dirname(__FILE__) . '/../config.php';
 }

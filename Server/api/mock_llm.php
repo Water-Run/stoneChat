@@ -15,6 +15,11 @@
  *   - Any other Origin: respond 403 and refuse to serve.
  */
 
+require_once dirname(__FILE__) . '/../boot_check.php';
+if (function_exists('sc_strict_environment_check')) {
+    sc_strict_environment_check();
+}
+
 $sc_mock_allowed = false;
 if (!isset($_SERVER['HTTP_ORIGIN']) || $_SERVER['HTTP_ORIGIN'] === '') {
     $sc_mock_allowed = true;

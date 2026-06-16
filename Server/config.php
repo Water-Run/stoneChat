@@ -172,9 +172,12 @@ if (!function_exists('sc_validate_path_resolve')) {
                 . str_replace('/', $sep, $path);
         // Walk segments to fold away "." and "..".
         $is_unc = (strlen($base) >= 2 && $base[1] === ':');
-        $prefix = $is_unc
-                ? substr($joined, 0, 2) . $sep // "C:\\"
-                : '';
+        $prefix = '';
+        if ($is_unc) {
+            $prefix = substr($joined, 0, 2) . $sep;
+        } elseif (strlen($joined) > 0 && ($joined[0] === '/' || $joined[0] === '\\')) {
+            $prefix = $joined[0];
+        }
         $body   = $is_unc
                 ? substr($joined, 2) : $joined;
         $body   = ltrim($body, '/\\');

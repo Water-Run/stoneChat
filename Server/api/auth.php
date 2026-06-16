@@ -37,6 +37,10 @@
 
 // Dependencies: load via relative path from this file's directory
 // (Server/api/auth.php -> Server/ and back to project root for config).
+require_once dirname(__FILE__) . '/../boot_check.php';
+if (function_exists('sc_strict_environment_check')) {
+    sc_strict_environment_check();
+}
 require_once dirname(__FILE__) . '/../config.php';
 require_once dirname(__FILE__) . '/../auth.php';
 require_once dirname(__FILE__) . '/../i18n.php';
@@ -96,15 +100,15 @@ if (!function_exists('sc_api_auth_cookie_params')) {
 
 if (!function_exists('sc_api_auth_cookie_value')) {
     /**
-     * Build an opaque session cookie value.
+     * Build a signed session cookie value.
      *
-     * For LAN deployment with a shared password the value need only
-     * be non-empty and unguessable; we never include the password
-     * (or any derivative of it) in the value.
-     *
+     * @param array $cfg Parsed config.
      * @return string Opaque value with a fixed "scv1:" prefix.
      */
-    function sc_api_auth_cookie_value() {
+    function sc_api_auth_cookie_value($cfg) {
+        if (function_exists('sc_auth_generate_token')) {
+            return sc_auth_generate_token($cfg);
+        }
         $r1 = function_exists('mt_rand') ? mt_rand() : rand();
         $r2 = function_exists('mt_rand') ? mt_rand() : rand();
         $r3 = function_exists('mt_rand') ? mt_rand() : rand();
@@ -123,7 +127,7 @@ if (!function_exists('sc_api_auth_set_cookie')) {
      */
     function sc_api_auth_set_cookie($cfg) {
         $params = sc_api_auth_cookie_params($cfg);
-        $value  = sc_api_auth_cookie_value();
+        $value  = sc_api_auth_cookie_value($cfg);
         $expire = ($params['expires'] > 0) ? (time() + $params['expires']) : 0;
         // PHP 5.2: name, value, expire, path, domain, secure, httponly
         setcookie($params['name'], $value, $expire, '/', '', false, true);
@@ -150,11 +154,8 @@ if (!function_exists('sc_api_auth_verify_cookie')) {
     /**
      * Decide whether the current request carries a valid session cookie.
      *
-     * The check is format-only (we have no server-side session store);
-     * the LAN threat model treats the cookie as a capability token.
-     *
      * @param array $cfg Parsed config.
-     * @return bool true if a well-formed session cookie is present.
+     * @return bool true if a valid signed session cookie is present.
      */
     function sc_api_auth_verify_cookie($cfg) {
         $params = sc_api_auth_cookie_params($cfg);
@@ -162,6 +163,9 @@ if (!function_exists('sc_api_auth_verify_cookie')) {
             return false;
         }
         $val = (string)$_COOKIE[$params['name']];
+        if (function_exists('sc_auth_verify_token')) {
+            return sc_auth_verify_token($val, $cfg);
+        }
         if (strlen($val) < 6 || strpos($val, 'scv1:') !== 0) {
             return false;
         }
