@@ -2,7 +2,7 @@
 /* -------------------------------------------------------------------------
  * stoneChat / Server/install.php
  *
- * Invoked by INSTALL.bat via the PHP CLI to perform backend init
+ * Invoked by INSTALL.cmd via the PHP CLI to perform backend init
  * after the file copy step. Refuses non-CLI mode, validates the PHP
  * runtime, ensures runtime directories, validates CONF.ini, and
  * creates LOGIN.txt with restrictive permissions.
@@ -13,6 +13,7 @@
  *   php Server/install.php --init-config
  *   php Server/install.php --init-history
  *   php Server/install.php --init-langs
+ *   php Server/install.php --init-login-log
  *   php Server/install.php --validate
  *
  * Output (one line per step):
@@ -35,14 +36,14 @@ if (!defined('PHP_SAPI') || (PHP_SAPI !== 'cli' && PHP_SAPI !== 'cli-server')) {
     exit(1);
 }
 
-/* Guard 2: require PHP 5.2 or newer. */
+/* Guard 2: require PHP 5.4 or newer (RUN.bat uses php -S). */
 if (!defined('PHP_VERSION')
     || !function_exists('version_compare')
-    || !version_compare(PHP_VERSION, '5.2.0', '>=')) {
+    || !version_compare(PHP_VERSION, '5.4.0', '>=')) {
     $v = defined('PHP_VERSION') ? PHP_VERSION : 'unknown';
     /* dots are not safe inside the reason token; replace with '_'. */
     echo 'FAIL:php_version:php_' . str_replace('.', '_', (string)$v)
-       . '_is_below_5_2' . "\n";
+       . '_is_below_5_4' . "\n";
     exit(1);
 }
 
@@ -156,7 +157,7 @@ if (!function_exists('sc_install_init_config')) {
                   . "theme = classic2001\n\n"
                   . "[Provider 1]\n"
                   . "id = openai\n"
-                  . "label = OpenAI (ChatGPT)\n"
+                  . "label = OpenAI\n"
                   . "type = openai\n"
                   . "api_base = https://api.openai.com/v1\n"
                   . "api_key = YOUR_OPENAI_API_KEY_HERE\n"
@@ -171,7 +172,7 @@ if (!function_exists('sc_install_init_config')) {
 
 /* sc_install_validate_config()
  *   Load CONF.ini and run sc_validate_config(). Error codes are
- *   joined with commas so the caller (INSTALL.bat) can echo one
+ *   joined with commas so the caller (INSTALL.cmd) can echo one
  *   line per failure. Secrets are never echoed. */
 if (!function_exists('sc_install_validate_config')) {
     function sc_install_validate_config() {
@@ -283,6 +284,7 @@ if (!function_exists('sc_install_parse_flags')) {
             '--init-config',
             '--init-history',
             '--init-langs',
+            '--init-login-log',
             '--validate',
         );
         $found = array();
@@ -304,7 +306,7 @@ if (!function_exists('sc_install_parse_flags')) {
 
 /* sc_install_select_steps($flags)
  *   Map recognised flags to step names. With no recognised flag
- *   (e.g. INSTALL.bat invokes `php install.php` with no args) we
+ *   (e.g. INSTALL.cmd invokes `php install.php` with no args) we
  *   run every step ("do everything"). */
 if (!function_exists('sc_install_select_steps')) {
     function sc_install_select_steps($flags) {
@@ -333,6 +335,9 @@ if (!function_exists('sc_install_select_steps')) {
         }
         if (in_array('--init-langs', $flags, true)) {
             $steps[] = 'langs';
+        }
+        if (in_array('--init-login-log', $flags, true)) {
+            $steps[] = 'login_log';
         }
         return $steps;
     }

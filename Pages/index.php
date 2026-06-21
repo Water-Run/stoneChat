@@ -8,5 +8,13 @@
  * this file and PHP will serve `index.htm` directly.
  * ------------------------------------------------------------------------- */
 
+$sc_boot_check = dirname(__FILE__) . '/../Server/boot_check.php';
+if (is_file($sc_boot_check)) {
+    require_once $sc_boot_check;
+    if (function_exists('sc_strict_environment_check')) {
+        sc_strict_environment_check();
+    }
+}
+
 header('Location: index.htm');
 exit;

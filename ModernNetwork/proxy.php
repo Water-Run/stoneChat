@@ -20,7 +20,7 @@
  *   sc_stunnel_pid_path($modern_dir)    absolute path to stunnel.pid
  *   sc_read_stunnel_target($conf_path)  parse existing conf target
  *   sc_generate_stunnel_conf(...)       write a fresh stunnel.conf
- *   sc_pid_alive($pid)                  is the PID still running?
+ *   sc_pid_alive($pid)                  is the stunnel PID still running?
  *   sc_stunnel_is_running($pid_path)    is stunnel up? (PID or false)
  *   sc_stunnel_stop($pid_path)          stop a running stunnel
  *   sc_stunnel_start($exe, $conf, $pid) launch stunnel with conf
@@ -182,7 +182,9 @@ if (!function_exists('sc_generate_stunnel_conf')) {
 }
 
 /* sc_pid_alive($pid)
- *   Is the PID still running? Uses tasklist on Windows, ps on Unix. */
+ *   Is the PID still a stunnel process? Uses tasklist on Windows,
+ *   ps on Unix. This avoids trusting stale pid files that now point
+ *   at an unrelated process. */
 if (!function_exists('sc_pid_alive')) {
     function sc_pid_alive($pid) {
         $pid = (int)$pid;
@@ -203,11 +205,16 @@ if (!function_exists('sc_pid_alive')) {
             if (strpos($line, 'No tasks') !== false) {
                 return false;
             }
-            return true;
+            return (stripos($line, 'stunnel') !== false);
         }
-        /* Unix: kill -0 succeeds if process exists. */
-        @exec('kill -0 ' . $pid . ' 2>/dev/null', $output, $rc);
-        return ($rc === 0);
+        /* Unix: verify the command name, not just PID existence. */
+        $output = array();
+        $rc = 0;
+        @exec('ps -p ' . $pid . ' -o comm= 2>/dev/null', $output, $rc);
+        if ($rc !== 0 || !is_array($output) || count($output) === 0) {
+            return false;
+        }
+        return (stripos(implode("\n", $output), 'stunnel') !== false);
     }
 }
 
@@ -379,16 +386,20 @@ if (!class_exists('SC_ChunkedParser')) {
 }
 
 /* sc_http_send_raw($port, $method, $host, $path, $headers, $body,
- *                  $timeout, $stream_callback = null)
+ *                  $timeout, $stream_callback = null,
+ *                  $connect_host = '127.0.0.1')
  *   Send a raw HTTP request over a TCP socket and read the full
  *   response. Returns array('status','headers','body') or
  *   array('error'). */
 if (!function_exists('sc_http_send_raw')) {
     function sc_http_send_raw($port, $method, $host, $path, $headers,
-                              $body, $timeout, $stream_callback = null) {
+                              $body, $timeout, $stream_callback = null,
+                              $connect_host = '127.0.0.1') {
         $errno = 0;
         $errstr = '';
-        $fp = @fsockopen('127.0.0.1', (int)$port, $errno, $errstr,
+        $chost = (is_string($connect_host) && $connect_host !== '')
+                 ? $connect_host : '127.0.0.1';
+        $fp = @fsockopen($chost, (int)$port, $errno, $errstr,
                           (int)$timeout);
         if ($fp === false) {
             return array('error' => 'connection_failed');

@@ -303,6 +303,22 @@ if (!function_exists('sc_api_chat_provider_timeout')) {
     }
 }
 
+/* sc_api_chat_provider_stream($provider)
+ *   Whether this provider should request upstream SSE streaming. */
+if (!function_exists('sc_api_chat_provider_stream')) {
+    function sc_api_chat_provider_stream($provider) {
+        if (!is_array($provider) || !isset($provider['stream'])) {
+            return false;
+        }
+        $text = strtolower(trim((string)$provider['stream']));
+        if ($text === '1' || $text === 'true' || $text === 'yes'
+            || $text === 'on') {
+            return true;
+        }
+        return false;
+    }
+}
+
 /* sc_api_chat_resolve_provider($providers, $cfg, $chat_id, $explicit)
  *   Resolve the provider row: explicit > chat meta > first configured. */
 if (!function_exists('sc_api_chat_resolve_provider')) {
@@ -701,6 +717,24 @@ if (!function_exists('sc_api_chat_handle_regenerate')) {
     }
 }
 
+/* sc_api_chat_stream_result_error($result)
+ *   Map a streaming dispatch result to an SSE error code. Empty
+ *   string means "no dispatch-level error". */
+if (!function_exists('sc_api_chat_stream_result_error')) {
+    function sc_api_chat_stream_result_error($result) {
+        if (!is_array($result)) {
+            return 'no_result';
+        }
+        if (!empty($result['ok'])) {
+            return '';
+        }
+        if (isset($result['error']) && (string)$result['error'] !== '') {
+            return (string)$result['error'];
+        }
+        return 'unknown';
+    }
+}
+
 /* sc_api_chat_handle_send_stream($cfg, $body)
  *   "send" action in streaming mode. */
 if (!function_exists('sc_api_chat_handle_send_stream')) {
@@ -744,6 +778,7 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
                 array('error' => 'provider_not_found')) . "\n\n";
             exit;
         }
+        $timeout = sc_api_chat_provider_timeout($provider);
 
         $hist = array();
         if (function_exists('sc_history_load_messages')) {
@@ -787,12 +822,39 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
         }
         ob_implicit_flush(true);
 
-        $result = sc_llm_dispatch(
-            $provider, $llm_msgs, $system,
-            array('SC_StreamAccumulator', 'callback')
-        );
-
-        $assistant = SC_StreamAccumulator::$content;
+        if (sc_api_chat_provider_stream($provider)) {
+            $result = sc_llm_dispatch(
+                $provider, $llm_msgs, $system,
+                array('SC_StreamAccumulator', 'callback')
+            );
+            $assistant = SC_StreamAccumulator::$content;
+        } else {
+            $start  = microtime(true);
+            $result = sc_llm_dispatch($provider, $llm_msgs, $system, null);
+            $elapsed = (microtime(true) - $start) * 1000;
+            $timeout_err = sc_api_chat_check_timeout(
+                $elapsed, $timeout, $result
+            );
+            if ($timeout_err !== false) {
+                $result = array('ok' => false, 'error' => $timeout_err);
+            }
+            $assistant = '';
+            if (is_array($result) && !empty($result['ok'])
+                && isset($result['content'])) {
+                $assistant = (string)$result['content'];
+            }
+            if ($assistant !== '') {
+                echo "data: " . json_encode(
+                    array('content' => $assistant)) . "\n\n";
+                flush();
+            }
+        }
+        $stream_err = sc_api_chat_stream_result_error($result);
+        if ($assistant === '' && $stream_err !== '') {
+            echo "data: " . json_encode(array('error' => $stream_err))
+               . "\n\n";
+            exit;
+        }
         if ($assistant !== ''
             && function_exists('sc_history_append_message')) {
             sc_history_append_message($chat_id, 'assistant', $assistant);
@@ -856,6 +918,7 @@ if (!function_exists('sc_api_chat_handle_regenerate_stream')) {
                 array('error' => 'provider_not_found')) . "\n\n";
             exit;
         }
+        $timeout = sc_api_chat_provider_timeout($provider);
 
         $llm_msgs = sc_api_chat_messages_to_llm($hist);
         $system   = sc_api_chat_load_system_prompt($chat_id);
@@ -888,12 +951,39 @@ if (!function_exists('sc_api_chat_handle_regenerate_stream')) {
         }
         ob_implicit_flush(true);
 
-        $result = sc_llm_dispatch(
-            $provider, $llm_msgs, $system,
-            array('SC_StreamAccumulator', 'callback')
-        );
-
-        $assistant = SC_StreamAccumulator::$content;
+        if (sc_api_chat_provider_stream($provider)) {
+            $result = sc_llm_dispatch(
+                $provider, $llm_msgs, $system,
+                array('SC_StreamAccumulator', 'callback')
+            );
+            $assistant = SC_StreamAccumulator::$content;
+        } else {
+            $start  = microtime(true);
+            $result = sc_llm_dispatch($provider, $llm_msgs, $system, null);
+            $elapsed = (microtime(true) - $start) * 1000;
+            $timeout_err = sc_api_chat_check_timeout(
+                $elapsed, $timeout, $result
+            );
+            if ($timeout_err !== false) {
+                $result = array('ok' => false, 'error' => $timeout_err);
+            }
+            $assistant = '';
+            if (is_array($result) && !empty($result['ok'])
+                && isset($result['content'])) {
+                $assistant = (string)$result['content'];
+            }
+            if ($assistant !== '') {
+                echo "data: " . json_encode(
+                    array('content' => $assistant)) . "\n\n";
+                flush();
+            }
+        }
+        $stream_err = sc_api_chat_stream_result_error($result);
+        if ($assistant === '' && $stream_err !== '') {
+            echo "data: " . json_encode(array('error' => $stream_err))
+               . "\n\n";
+            exit;
+        }
         if ($assistant !== ''
             && function_exists('sc_history_append_message')) {
             sc_history_append_message($chat_id, 'assistant', $assistant);
@@ -905,6 +995,9 @@ if (!function_exists('sc_api_chat_handle_regenerate_stream')) {
 }
 
 /* ---- main dispatch ---------------------------------------------- */
+if (defined('SC_API_CHAT_NO_ENTRY') && SC_API_CHAT_NO_ENTRY) {
+    return;
+}
 
 $cfg = sc_api_chat_load_cfg();
 

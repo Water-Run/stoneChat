@@ -246,29 +246,44 @@ body {
   sc_cycle();
 
   // ---- 3-second countdown + redirect ----------------------------
-  function sc_get_next() {
-    var q = (location.search || '').substring(1);
-    var pairs = q.split('&');
+	  function sc_get_next() {
+	    var q = (location.search || '').substring(1);
+	    var pairs = q.split('&');
     for (var i = 0; i < pairs.length; i++) {
       var kv = pairs[i].split('=');
       if (decodeURIComponent(kv[0]) === 'next'
           && typeof kv[1] !== 'undefined') {
         return decodeURIComponent(kv[1]);
       }
-    }
-    return 'index.htm';
-  }
-  function sc_redirect() {
-    // Mark as seen so subsequent page loads skip this page.
-    try {
-      document.cookie = 'sc_super_modern_seen=1; path=/; SameSite=Lax';
-    } catch (e) { /* old browsers: best-effort */ }
-    var next = sc_get_next();
-    if (!next || next.indexOf('super-modern.htm') !== -1) {
-      next = 'index.htm';
-    }
-    location.href = next;
-  }
+	    }
+	    return 'index.htm';
+	  }
+	  function sc_safe_next(next) {
+	    if (!next || next.indexOf('super-modern.htm') !== -1) {
+	      return 'index.htm';
+	    }
+	    if (next.indexOf('://') !== -1 || next.indexOf('\\') !== -1) {
+	      return 'index.htm';
+	    }
+	    if (next === 'index.htm') {
+	      return next;
+	    }
+	    if (next.charAt(0) !== '/') {
+	      return 'index.htm';
+	    }
+	    if (next.charAt(1) === '/') {
+	      return 'index.htm';
+	    }
+	    return next;
+	  }
+	  function sc_redirect() {
+	    // Mark as seen so subsequent page loads skip this page.
+	    try {
+	      document.cookie = 'sc_super_modern_seen=1; path=/; SameSite=Lax';
+	    } catch (e) { /* old browsers: best-effort */ }
+	    var next = sc_safe_next(sc_get_next());
+	    location.href = next;
+	  }
   var remaining = 3;
   var cdEl = document.getElementById('countdown');
   cdEl.textContent = remaining;

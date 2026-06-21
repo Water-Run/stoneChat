@@ -71,7 +71,7 @@ if (!function_exists('sc_is_modern_windows')) {
         $build = 0;
         $ver = @shell_exec('ver 2>NUL');
         if (is_string($ver) && $ver !== ''
-            && preg_match('/\[\s*Version\s+\d+\.\d+\.(\d+)(?:\.\d+)?\s*\]/i',
+            && preg_match('/\[\s*[^\d\]]*\d+\.\d+\.(\d+)(?:\.\d+)?\s*\]/',
                           $ver, $m)) {
             $build = (int)$m[1];
         }
@@ -109,7 +109,8 @@ if (!function_exists('sc_strict_environment_check')) {
             header('HTTP/1.1 500 Internal Server Error');
             echo "Error: stunnel.exe not found at: " . $stunnel_path
                . ". stoneChat requires stunnel for HTTPS tunnel "
-               . "proxying.\n";
+               . "proxying.\n"
+               . "Download: https://www.stunnel.org/downloads.html\n";
             exit(1);
         }
     }

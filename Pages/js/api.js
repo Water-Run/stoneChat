@@ -140,7 +140,11 @@
 
     function sc_jsonParse(text) {
         if (typeof JSON !== 'undefined' && typeof JSON.parse === 'function') {
-            return JSON.parse(text);
+            try {
+                return JSON.parse(text);
+            } catch (e1) {
+                return { __sc_parse_error: e1.message || String(e1) };
+            }
         }
         // Last-resort fallback for IE6/IE7. The text comes from our own
         // server, so the eval() risk is bounded; we still wrap it so any
@@ -308,6 +312,7 @@
         var sseBuffer = '';
         var isEventStream = false;
         var lastEventData = null;
+        var streamError = '';
         
         var timer = window.setTimeout(function () {
             timedOut = true;
@@ -353,6 +358,9 @@
                                 }
                                 var parsedData = sc_jsonParse(dataVal);
                                 if (parsedData && typeof parsedData === 'object' && !('__sc_parse_error' in parsedData)) {
+                                    if (parsedData.error !== null && parsedData.error !== undefined) {
+                                        streamError = String(parsedData.error);
+                                    }
                                     if (parsedData.done) {
                                         lastEventData = parsedData;
                                     }
@@ -387,6 +395,13 @@
                     var snippet = finalText.length > 200 ? finalText.substring(0, 200) : finalText;
                     if (typeof onComplete === 'function') {
                         onComplete({ ok: false, data: null, error: 'http_' + status + ':' + snippet });
+                    }
+                    return;
+                }
+
+                if (streamError !== '') {
+                    if (typeof onComplete === 'function') {
+                        onComplete({ ok: false, data: null, error: streamError });
                     }
                     return;
                 }

@@ -149,6 +149,32 @@ if (!function_exists('sc_api_providers_default_scalar')) {
     }
 }
 
+/* sc_api_providers_bool($value, $fallback)
+ *   Parse common CONF.ini boolean spellings. */
+if (!function_exists('sc_api_providers_bool')) {
+    function sc_api_providers_bool($value, $fallback) {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value) || is_float($value)) {
+            return ((int)$value) !== 0;
+        }
+        $text = strtolower(trim((string)$value));
+        if ($text === '') {
+            return (bool)$fallback;
+        }
+        if ($text === '1' || $text === 'true' || $text === 'yes'
+            || $text === 'on') {
+            return true;
+        }
+        if ($text === '0' || $text === 'false' || $text === 'no'
+            || $text === 'off') {
+            return false;
+        }
+        return (bool)$fallback;
+    }
+}
+
 /* sc_api_providers_normalize($p, $defaults)
  *   Convert a raw provider row into the GET-response shape.
  *   The masked api_key is the ONLY place a key value reaches the
@@ -162,6 +188,21 @@ if (!function_exists('sc_api_providers_normalize')) {
         $api_base = isset($p['api_base']) ? (string)$p['api_base'] : '';
         $api_key  = isset($p['api_key'])  ? (string)$p['api_key']  : '';
         $display  = ($label !== '') ? $label : $id;
+        $default_stream = isset($defaults['stream'])
+                          ? sc_api_providers_bool($defaults['stream'], false)
+                          : false;
+        $stream   = isset($p['stream']) && (string)$p['stream'] !== ''
+                    ? sc_api_providers_bool($p['stream'], $default_stream)
+                    : $default_stream;
+        $max_tokens = isset($p['max_tokens'])
+                      && (string)$p['max_tokens'] !== ''
+                      ? (int)$p['max_tokens']
+                      : (isset($defaults['max_tokens'])
+                         ? (int)$defaults['max_tokens'] : 1024);
+        $timeout = isset($p['timeout']) && (string)$p['timeout'] !== ''
+                   ? (int)$p['timeout']
+                   : (isset($defaults['timeout'])
+                      ? (int)$defaults['timeout'] : 60);
 
         $available = true;
         $reason    = '';
@@ -185,12 +226,9 @@ if (!function_exists('sc_api_providers_normalize')) {
              * sc_api_providers_mask_key() helper is kept for callers
              * that explicitly want a less-aggressive redaction. */
             'api_key'      => $api_key === '' ? '' : '****',
-            'stream'       => isset($defaults['stream'])
-                              ? (bool)$defaults['stream'] : false,
-            'max_tokens'   => isset($defaults['max_tokens'])
-                              ? (int)$defaults['max_tokens'] : 1024,
-            'timeout'      => isset($defaults['timeout'])
-                              ? (int)$defaults['timeout'] : 60,
+            'stream'       => $stream,
+            'max_tokens'   => $max_tokens,
+            'timeout'      => $timeout,
             'available'    => $available,
             'reason'       => $reason,
         );
@@ -224,8 +262,10 @@ if (!function_exists('sc_api_providers_load_raw')) {
 if (!function_exists('sc_api_providers_load_all')) {
     function sc_api_providers_load_all($ini_path, $cfg) {
         $raw = sc_api_providers_load_raw($ini_path);
-        $stream     = (bool)sc_api_providers_default_scalar(
-                          $cfg, 'stream', false);
+        $stream     = sc_api_providers_bool(
+                          sc_api_providers_default_scalar(
+                              $cfg, 'stream', false),
+                          false);
         $max_tokens = (int)sc_api_providers_default_scalar(
                           $cfg, 'max_tokens', 1024);
         $timeout    = (int)sc_api_providers_default_scalar(
@@ -342,6 +382,10 @@ if (!function_exists('sc_api_providers_emit_json')) {
 }
 
 /* ---- entry point ------------------------------------------------- */
+if (defined('SC_API_PROVIDERS_NO_ENTRY') && SC_API_PROVIDERS_NO_ENTRY) {
+    return;
+}
+
 $ini_path = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..'
           . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'CONF.ini';
 

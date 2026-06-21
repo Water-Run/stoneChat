@@ -5,10 +5,47 @@
 :: Verifies the runtime environment before starting PHP.
 :: ============================================================
 
-setlocal enabledelayedexpansion
+setlocal DisableDelayedExpansion
 
 chcp 65001 >nul
 cd /d "%~dp0"
+
+set "SC_SOURCE_PATH=%CD%"
+echo("%SC_SOURCE_PATH%" | find "!" >nul
+if not errorlevel 1 (
+    echo.
+    echo [FAIL] Current stoneChat path contains an exclamation mark !.
+    echo        CMD delayed expansion cannot safely run from this path.
+    echo        Move stoneChat to a path without ! and run RUN.bat again.
+    echo.
+    pause
+    endlocal
+    exit /b 1
+)
+
+set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
+if exist "%~dp0CONF.ini" (
+    for /f "usebackq eol=; tokens=1,* delims==" %%a in ("%~dp0CONF.ini") do (
+        for /f "tokens=* delims= " %%k in ("%%a") do (
+            if /i "%%k"=="stunnel" (
+                for /f "tokens=* delims= " %%s in ("%%b") do set "STUNNEL_PATH=%%s"
+            )
+        )
+    )
+)
+echo("%STUNNEL_PATH%" | find "!" >nul
+if not errorlevel 1 (
+    echo.
+    echo [FAIL] Stunnel path contains an exclamation mark !.
+    echo        CMD delayed expansion cannot safely use that path.
+    echo        Install stunnel in a folder without !, or edit CONF.ini.
+    echo.
+    pause
+    endlocal
+    exit /b 1
+)
+
+setlocal EnableDelayedExpansion
 
 echo.
 echo ============================================================
@@ -27,19 +64,21 @@ set "WIN_BUILD=0"
 set "SC_MODERN=0"
 
 :: ------------------------------------------------------------
-:: 1. PHP 5.2 or later in PATH
+:: 1. PHP 5.4 or later in PATH
 :: ------------------------------------------------------------
-echo [ 1/7] PHP 5.2 or later in PATH...
+echo [ 1/7] PHP 5.4 or later in PATH...
 php -v >nul 2>&1
 if errorlevel 1 (
     echo        [FAIL] PHP not found in PATH.
-    echo               Install PHP 5.2+ and add php.exe to PATH.
+    echo               Install PHP 5.4+ and add php.exe to PATH.
+    echo               Download: https://windows.php.net/downloads/releases/archives/
     set /a "ERR_COUNT+=1"
 ) else (
     for /f "delims=" %%v in ('php -r "echo PHP_VERSION;" 2^>nul') do set "PHPVER=%%v"
-    php -r "exit(version_compare(PHP_VERSION, '5.2.0', '>=') ? 0 : 1);" >nul 2>&1
+    php -r "exit(version_compare(PHP_VERSION, '5.4.0', '>=') ? 0 : 1);" >nul 2>&1
     if errorlevel 1 (
-        echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.2 or later.
+        echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.4 or later.
+        echo               Download: https://windows.php.net/downloads/releases/archives/
         set /a "ERR_COUNT+=1"
     ) else (
         echo        [ OK ] PHP !PHPVER! found.
@@ -53,21 +92,21 @@ if errorlevel 1 (
 echo [ 2/7] CONF.ini present and valid...
 if not exist "%~dp0CONF.ini" (
     echo        [FAIL] CONF.ini not found at project root.
-    echo               Run INSTALL.bat to create one, or copy from a backup.
+    echo               Run INSTALL.cmd to create one, or copy from a backup.
     set /a "ERR_COUNT+=1"
 ) else (
     if "!PHP_OK!"=="1" (
-        for /f "delims=" %%e in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');$e=sc_validate_config($c);echo empty($e)?'OK':'ERR:'.implode(',',$e);" 2^>nul') do set "VALIDATE_OUT=%%e"
+        for /f "delims=" %%e in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');$e=sc_config_fatal_errors(sc_validate_config($c));echo empty($e)?'OK':'ERR:'.implode(',',$e);" 2^>nul') do set "VALIDATE_OUT=%%e"
         if "!VALIDATE_OUT!"=="OK" (
             echo        [ OK ] CONF.ini present and valid.
             set "CONF_OK=1"
         ) else (
             echo        [FAIL] CONF.ini validation failed: !VALIDATE_OUT!
-            echo               Edit CONF.ini (placeholder values like YOUR_PASSWORD_HERE are rejected).
+            echo               Edit CONF.ini ^(server port and auth password are required^).
             set /a "ERR_COUNT+=1"
         )
     ) else (
-        echo        [SKIP] Skipped (PHP not available).
+        echo        [SKIP] Skipped ^(PHP not available^).
         set /a "ERR_COUNT+=1"
     )
 )
@@ -78,14 +117,10 @@ if not exist "%~dp0CONF.ini" (
 echo [ 3/7] Listening port availability...
 set "SC_PORT=9999"
 if "!CONF_OK!"=="1" (
-    for /f "usebackq eol=; tokens=1,* delims==" %%a in ("%~dp0CONF.ini") do (
-        set "_k=%%a"
-        set "_v=%%b"
-        set "_k=!_k: =!"
-        if /i "!_k!"=="port" (
-            for /f "tokens=*" %%p in ("!_v!") do set "SC_PORT=%%p"
-        )
-    )
+    for /f "delims=" %%p in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');echo isset($c['server']['port'])?(int)$c['server']['port']:9999;" 2^>nul') do set "SC_PORT=%%p"
+    if "!SC_PORT!"=="" set "SC_PORT=9999"
+    for /f "delims=" %%s in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');echo isset($c['paths']['stunnel'])?$c['paths']['stunnel']:'';" 2^>nul') do set "STUNNEL_PATH=%%s"
+    if "!STUNNEL_PATH!"=="" set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
 )
 netstat -ano | findstr /R /C:"LISTENING" | findstr /C:":!SC_PORT! " >nul 2>&1
 if not errorlevel 1 (
@@ -101,30 +136,20 @@ if not errorlevel 1 (
 :: 4. [paths] stunnel executable exists
 :: ------------------------------------------------------------
 echo [ 4/7] stunnel executable...
-set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
-if "!CONF_OK!"=="1" (
-    for /f "usebackq eol=; tokens=1,* delims==" %%a in ("%~dp0CONF.ini") do (
-        set "_k=%%a"
-        set "_v=%%b"
-        set "_k=!_k: =!"
-        if /i "!_k!"=="stunnel" (
-            for /f "tokens=*" %%s in ("!_v!") do set "STUNNEL_PATH=%%s"
-        )
-    )
-)
 if exist "!STUNNEL_PATH!" (
-    echo        [ OK ] stunnel found: !STUNNEL_PATH!
+    echo        [ OK ] stunnel found: "!STUNNEL_PATH!"
     set "STUNNEL_OK=1"
 ) else (
-    echo        [FAIL] stunnel.exe not found at: !STUNNEL_PATH!
+    echo        [FAIL] stunnel.exe not found at: "!STUNNEL_PATH!"
     echo               Install stunnel, or edit CONF.ini [paths] stunnel.
+    echo               Download: https://www.stunnel.org/downloads.html
     set /a "ERR_COUNT+=1"
 )
 
 :: ------------------------------------------------------------
 :: 5. ModernNetwork\cacert.pem present
 :: ------------------------------------------------------------
-echo [ 5/7] CA certificate (cacert.pem)...
+echo [ 5/7] CA certificate ^(cacert.pem^)...
 if exist "%~dp0ModernNetwork\cacert.pem" (
     echo        [ OK ] cacert.pem present.
     set "CACERT_OK=1"
@@ -169,11 +194,14 @@ set "VER_NUM="
 for /f "tokens=2"        %%a in ("!VER_INNER!") do set "VER_NUM=%%a"
 for /f "tokens=3 delims=." %%a in ("!VER_NUM!") do set "WIN_BUILD=%%a"
 if "!WIN_BUILD!"=="" set "WIN_BUILD=0"
+set "WIN_BUILD=!WIN_BUILD: =!"
+echo(!WIN_BUILD!| findstr /R "^[0-9][0-9]*$" >nul
+if errorlevel 1 set "WIN_BUILD=0"
 if !WIN_BUILD! GEQ 17763 (
     set "SC_MODERN=1"
-    echo        [INFO] Windows build !WIN_BUILD! detected (Windows 10 1809 or newer).
+    echo        [INFO] Windows build !WIN_BUILD! detected ^(Windows 10 1809 or newer^).
     echo               Your device looks very modern; many modern tools are available.
-    echo               stoneChat is a retro LLM client (IE6 / Windows XP era).
+    echo               stoneChat is a retro LLM client ^(IE6 / Windows XP era^).
     echo               It still runs fine; the UI just looks 20+ years old by design.
     echo               Expect a brief "Super-Modern-HTML" splash on first page load.
 ) else (
@@ -183,11 +211,12 @@ if !WIN_BUILD! GEQ 17763 (
 echo.
 if !ERR_COUNT! GTR 0 (
     echo ============================================================
-    echo   stoneChat startup check FAILED: !ERR_COUNT! error(s).
+    echo   stoneChat startup check FAILED: !ERR_COUNT! error^(s^).
     echo   Please fix the issues above and re-run RUN.bat.
     echo ============================================================
     echo.
     pause
+    endlocal
     endlocal
     exit /b 1
 )
@@ -209,5 +238,6 @@ php -S localhost:!SC_PORT! Pages/router.php
 echo.
 echo stoneChat has stopped.
 pause
+endlocal
 endlocal
 exit /b 0

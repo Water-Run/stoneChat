@@ -340,7 +340,7 @@
     // -------------------------------------------------------------------------
     // openConfigFile: a browser running on a client machine cannot open a
     // server-side file directly. We surface the location of CONF.ini on
-    // the server host and remind the user that INSTALL.bat / a text editor
+    // the server host and remind the user that INSTALL.cmd / a text editor
     // is the right tool for editing it. Then they can press "Reload config"
     // to pick up the changes.
     // -------------------------------------------------------------------------
@@ -348,7 +348,7 @@
         alert(
             'CONF.ini lives on the server host, next to RUN.bat.\n\n'
           + 'A browser page cannot open a local file from the server.\n'
-          + 'Edit CONF.ini with Notepad (or INSTALL.bat reopens it),\n'
+          + 'Edit CONF.ini with Notepad (or INSTALL.cmd reopens it),\n'
           + 'then click "Reload config" to apply the changes.'
         );
     }

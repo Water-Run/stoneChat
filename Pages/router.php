@@ -14,12 +14,33 @@
  *   /Server/langs/*.php -> execute as PHP
  *   /Assets/...        -> serve static file with MIME type
  *   /ModernNetwork/... -> serve static file (cacert.pem, README, ...)
- *   /HISTORY/...       -> serve static file (text logs, etc.)
- *   /CONF.ini          -> serve as text/plain
+ *   /HISTORY/...       -> 404 (runtime data is private)
+ *   /CONF.ini          -> 404 (config can contain secrets)
  *   anything else      -> return false (PHP server returns 404)
  *
  * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */
+
+if (!function_exists('sc_router_not_found')) {
+    function sc_router_not_found() {
+        header('HTTP/1.0 404 Not Found');
+        echo '404 Not Found';
+        return true;
+    }
+}
+
+if (!function_exists('sc_router_is_under')) {
+    function sc_router_is_under($file, $base) {
+        $file_real = @realpath($file);
+        $base_real = @realpath($base);
+        if ($file_real === false || $base_real === false) {
+            return false;
+        }
+        $file_norm = str_replace('\\', '/', $file_real);
+        $base_norm = rtrim(str_replace('\\', '/', $base_real), '/');
+        return strpos($file_norm . '/', $base_norm . '/') === 0;
+    }
+}
 
 $sc_boot_check = dirname(__FILE__) . '/../Server/boot_check.php';
 if (is_file($sc_boot_check)) {
@@ -61,9 +82,10 @@ if ($sc_raw_path === '/favicon.ico') {
 $sc_is_modern = function_exists('sc_is_modern_windows')
                 ? sc_is_modern_windows() : false;
 if ($sc_is_modern && empty($_COOKIE['sc_modern'])) {
-    /* one year, scoped to the whole site. HttpOnly is unnecessary
-     * (the client never reads this value via JS). */
-    setcookie('sc_modern', '1', time() + 31536000, '/', '', false, true);
+    /* One year, scoped to the whole site. This cookie is deliberately
+     * readable by JS: modern-banner.js uses it to avoid showing modern
+     * decorations on old Windows with a newer browser installed. */
+    setcookie('sc_modern', '1', time() + 31536000, '/', '', false, false);
     $_COOKIE['sc_modern'] = '1';
 }
 $sc_already_seen    = !empty($_COOKIE['sc_super_modern_seen']);
@@ -106,7 +128,8 @@ if ($path === '/' || $path === '') {
 /* 2) Pages/ subtree (htm, js, css, the index.php fallback). */
 if (strpos($path, '/Pages/') === 0) {
     $file = realpath('.' . $path);
-    if ($file !== false && is_file($file) && is_readable($file)) {
+    if ($file !== false && sc_router_is_under($file, 'Pages')
+        && is_file($file) && is_readable($file)) {
         $ext = strtolower(strrchr($file, '.'));
         if ($ext === '.php') {
             /* execute in its own dir so dirname(__FILE__) works. */
@@ -116,7 +139,7 @@ if (strpos($path, '/Pages/') === 0) {
         }
         return false; /* let PHP serve as static. */
     }
-    return false; /* 404. */
+    return sc_router_not_found();
 }
 
 /* 3) Server-side PHP endpoints. */
@@ -127,12 +150,13 @@ $php_prefixes = array(
 foreach ($php_prefixes as $prefix => $target_prefix) {
     if (strpos($path, $prefix) === 0) {
         $file = realpath($target_prefix . substr($path, strlen($prefix)));
-        if ($file !== false && is_file($file) && is_readable($file)) {
+        if ($file !== false && sc_router_is_under($file, $target_prefix)
+            && is_file($file) && is_readable($file)) {
             chdir(dirname($file));
             require $file;
             return true;
         }
-        return false; /* 404. */
+        return sc_router_not_found();
     }
 }
 
@@ -140,38 +164,35 @@ foreach ($php_prefixes as $prefix => $target_prefix) {
  *    Only exposed when called as a PHP endpoint. These are includes,
  *    not real endpoints -- returning 404 is fine. */
 if (strpos($path, '/Server/') === 0) {
-    $file = realpath('.' . $path);
-    if ($file !== false && is_file($file) && is_readable($file)
-        && strtolower(strrchr($file, '.')) === '.php') {
-        chdir(dirname($file));
-        require $file;
-        return true;
-    }
-    return false; /* 404. */
+    return sc_router_not_found();
 }
 
-/* 5) Static assets (Assets/, ModernNetwork/, HISTORY/). */
+/* 5) Static assets (Assets/, ModernNetwork/). */
 $static_prefixes = array(
     '/Assets/'        => 'Assets/',
     '/ModernNetwork/' => 'ModernNetwork/',
-    '/HISTORY/'       => 'HISTORY/',
 );
 foreach ($static_prefixes as $prefix => $target_prefix) {
     if (strpos($path, $prefix) === 0) {
+        if ($prefix === '/ModernNetwork/') {
+            $name = basename($path);
+            if ($name === 'stunnel.conf' || $name === 'stunnel.pid') {
+                return sc_router_not_found();
+            }
+        }
         $file = $target_prefix . substr($path, strlen($prefix));
-        if (is_file($file) && is_readable($file)) {
+        if (sc_router_is_under($file, $target_prefix)
+            && is_file($file) && is_readable($file)) {
             return false; /* let PHP serve as static with auto MIME. */
         }
-        return false; /* 404. */
+        return sc_router_not_found();
     }
 }
 
-/* 6) CONF.ini at root. */
-if ($path === '/CONF.ini' && is_file('CONF.ini')) {
-    return false; /* let PHP serve as static. */
+/* 6) Private runtime/config files. */
+if ($path === '/CONF.ini' || strpos($path, '/HISTORY/') === 0) {
+    return sc_router_not_found();
 }
 
 /* 7) Anything else: 404. */
-header('HTTP/1.0 404 Not Found');
-echo '404 Not Found';
-return true;
+return sc_router_not_found();

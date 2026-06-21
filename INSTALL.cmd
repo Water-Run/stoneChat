@@ -2,14 +2,27 @@
 :: ============================================================
 :: stoneChat Installer
 :: Compatible with Windows XP / Vista / 7 / 10 / 11
-:: Requires: PHP 5.2+ in PATH, Windows Script Host.
-:: Optional: PowerShell (used for desktop / Start Menu shortcuts).
+:: Requires: PHP 5.4+ in PATH, Windows Script Host.
+:: Shortcuts are created with Windows Script Host (no PowerShell needed).
 :: ============================================================
 
-setlocal enabledelayedexpansion
+setlocal DisableDelayedExpansion
 
 chcp 65001 >nul
 cd /d "%~dp0"
+
+set "SC_SOURCE_PATH=%CD%"
+echo("%SC_SOURCE_PATH%" | find "!" >nul
+if not errorlevel 1 (
+    echo.
+    echo [FAIL] Current stoneChat path contains an exclamation mark !.
+    echo        CMD delayed expansion cannot safely run from this path.
+    echo        Move stoneChat to a path without ! and run INSTALL.cmd again.
+    echo.
+    pause
+    endlocal
+    exit /b 1
+)
 
 echo.
 echo ============================================================
@@ -18,14 +31,70 @@ echo ============================================================
 echo.
 echo This installer will:
 echo   1. Check your environment (PHP, ports, files, disk, registry,
-echo      Windows version).
+echo      Windows version^).
 echo   2. Copy stoneChat files to the chosen folder.
 echo   3. Create a HISTORY\ directory for chat logs.
 echo   4. Create Desktop and Start Menu shortcuts.
 echo.
 
 :: ------------------------------------------------------------
-:: Windows version detection (early, for "modern" warning)
+:: Prompt for install path
+:: ------------------------------------------------------------
+set "DEFAULT_INSTALL_PATH=C:\Program Files\stoneChat"
+set "INSTALL_PATH="
+
+if not "%~1"=="" (
+    set "INSTALL_PATH=%~1"
+) else (
+    set /p "INSTALL_PATH=Install path [%DEFAULT_INSTALL_PATH%]: "
+)
+if "%INSTALL_PATH%"=="" set "INSTALL_PATH=%DEFAULT_INSTALL_PATH%"
+
+:: Strip a single trailing backslash for consistent quoting later.
+if "%INSTALL_PATH:~-1%"=="\" set "INSTALL_PATH=%INSTALL_PATH:~0,-1%"
+
+echo("%INSTALL_PATH%" | find "!" >nul
+if not errorlevel 1 (
+    echo.
+    echo [FAIL] Install path contains an exclamation mark !.
+    echo        CMD delayed expansion cannot safely use paths containing !.
+    echo        Please choose another folder and run INSTALL.cmd again.
+    echo.
+    pause
+    endlocal
+    exit /b 1
+)
+
+set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
+if exist "%~dp0CONF.ini" (
+    for /f "usebackq eol=; tokens=1,* delims==" %%a in ("%~dp0CONF.ini") do (
+        for /f "tokens=* delims= " %%k in ("%%a") do (
+            if /i "%%k"=="stunnel" (
+                for /f "tokens=* delims= " %%v in ("%%b") do set "STUNNEL_PATH=%%v"
+            )
+        )
+    )
+)
+echo("%STUNNEL_PATH%" | find "!" >nul
+if not errorlevel 1 (
+    echo.
+    echo [FAIL] Stunnel path contains an exclamation mark !.
+    echo        CMD delayed expansion cannot safely use that path.
+    echo        Install stunnel in a folder without !, or edit CONF.ini.
+    echo.
+    pause
+    endlocal
+    exit /b 1
+)
+
+echo.
+echo Installing to: "%INSTALL_PATH%"
+echo.
+
+setlocal EnableDelayedExpansion
+
+:: ------------------------------------------------------------
+:: Windows version detection (for "modern" warning)
 :: ------------------------------------------------------------
 set "WIN_BUILD=0"
 set "SC_MODERN=0"
@@ -34,110 +103,108 @@ for /f "tokens=2 delims=[]" %%a in ("!VER_STR!") do set "VER_INNER=%%a"
 for /f "tokens=2"        %%a in ("!VER_INNER!") do set "VER_NUM=%%a"
 for /f "tokens=3 delims=." %%a in ("!VER_NUM!") do set "WIN_BUILD=%%a"
 if "!WIN_BUILD!"=="" set "WIN_BUILD=0"
+set "WIN_BUILD=!WIN_BUILD: =!"
+echo(!WIN_BUILD!| findstr /R "^[0-9][0-9]*$" >nul
+if errorlevel 1 set "WIN_BUILD=0"
 if !WIN_BUILD! GEQ 17763 set "SC_MODERN=1"
-
-:: ------------------------------------------------------------
-:: Prompt for install path
-:: ------------------------------------------------------------
-set "DEFAULT_INSTALL_PATH=C:\Program Files\stoneChat"
-set "INSTALL_PATH="
-
-set /p "INSTALL_PATH=Install path [%DEFAULT_INSTALL_PATH%]: "
-if "%INSTALL_PATH%"=="" set "INSTALL_PATH=%DEFAULT_INSTALL_PATH%"
-
-:: Strip a single trailing backslash for consistent quoting later.
-if "%INSTALL_PATH:~-1%"=="\" set "INSTALL_PATH=%INSTALL_PATH:~0,-1%"
-
-echo.
-echo Installing to: "%INSTALL_PATH%"
-echo.
 
 :: ============================================================
 :: Environment Check (8 checks)
 :: ============================================================
 set "ERR_COUNT=0"
+set "PHP_OK=0"
+set "SC_PORT=9999"
 
 echo ============================================================
 echo  Environment Check
 echo ============================================================
 
-:: ---- 1. PHP 5.2 or later ----
-echo [ 1/8] PHP 5.2 or later in PATH...
+:: ---- 1. PHP 5.4 or later ----
+echo [ 1/8] PHP 5.4 or later in PATH...
 php -v >nul 2>&1
 if errorlevel 1 (
     echo        [FAIL] PHP not found in PATH.
-    echo               Please install PHP 5.2 or later and add php.exe to PATH.
+    echo               Please install PHP 5.4 or later and add php.exe to PATH.
+    echo               Download: https://windows.php.net/downloads/releases/archives/
     set /a "ERR_COUNT+=1"
 ) else (
     for /f "delims=" %%v in ('php -r "echo PHP_VERSION;" 2^>nul') do set "PHPVER=%%v"
-    php -r "exit(version_compare(PHP_VERSION, '5.2.0', '>=') ? 0 : 1);" >nul 2>&1
+    php -r "exit(version_compare(PHP_VERSION, '5.4.0', '>=') ? 0 : 1);" >nul 2>&1
     if errorlevel 1 (
-        echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.2 or later.
+        echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.4 or later.
+        echo               Download: https://windows.php.net/downloads/releases/archives/
         set /a "ERR_COUNT+=1"
     ) else (
         echo        [ OK ] PHP !PHPVER! found.
+        set "PHP_OK=1"
     )
 )
 
-:: ---- 2. Port 9999 free ----
-echo [ 2/8] Port 9999 availability...
-netstat -an | findstr /R /C:":9999 " >nul 2>&1
+if "!PHP_OK!"=="1" (
+    for /f "delims=" %%p in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');echo isset($c['server']['port'])?(int)$c['server']['port']:9999;" 2^>nul') do set "SC_PORT=%%p"
+    if "!SC_PORT!"=="" set "SC_PORT=9999"
+    for /f "delims=" %%s in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');echo isset($c['paths']['stunnel'])?$c['paths']['stunnel']:'';" 2^>nul') do set "STUNNEL_PATH=%%s"
+    if "!STUNNEL_PATH!"=="" set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
+)
+
+:: ---- 2. server port free ----
+echo [ 2/8] Port !SC_PORT! availability...
+netstat -an | findstr /R /C:":!SC_PORT! " >nul 2>&1
 if not errorlevel 1 (
-    echo        [WARN] Port 9999 appears in use. The installer will continue,
+    echo        [WARN] Port !SC_PORT! appears in use. The installer will continue,
     echo               but you may need to free the port (or change [server]
-    echo               port in CONF.ini) before starting the server.
+    echo               port in CONF.ini^) before starting the server.
 ) else (
-    echo        [ OK ] Port 9999 is free.
+    echo        [ OK ] Port !SC_PORT! is free.
 )
 
 :: ---- 3. stunnel.exe present (path from CONF.ini [paths] stunnel) ----
 echo [ 3/8] stunnel executable...
-set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
-if exist "%~dp0CONF.ini" (
-    for /f "usebackq eol=; tokens=1,* delims==" %%a in ("%~dp0CONF.ini") do (
-        set "_key=%%a"
-        set "_val=%%b"
-        set "_key=!_key: =!"
-        if /i "!_key!"=="stunnel" (
-            for /f "tokens=*" %%v in ("!_val!") do set "STUNNEL_PATH=%%v"
-        )
-    )
-)
-if exist "%STUNNEL_PATH%" (
-    echo        [ OK ] stunnel found: %STUNNEL_PATH%
+if exist "!STUNNEL_PATH!" (
+    echo        [ OK ] stunnel found: "!STUNNEL_PATH!"
 ) else (
-    echo        [WARN] stunnel.exe not found at: %STUNNEL_PATH%
-    echo               ModernNetwork/HTTPS features will be disabled until
-    echo               stunnel is installed. Edit CONF.ini [paths] stunnel
-    echo               after install if you need HTTPS for remote LLM APIs.
+    echo        [FAIL] stunnel.exe not found at: "!STUNNEL_PATH!"
+    echo               Install stunnel, or edit CONF.ini [paths] stunnel.
+    echo               Download: https://www.stunnel.org/downloads.html
+    set /a "ERR_COUNT+=1"
 )
 
 :: ---- 4. cacert.pem present ----
-echo [ 4/8] CA certificate (cacert.pem)...
+echo [ 4/8] CA certificate ^(cacert.pem^)...
 if exist "%~dp0ModernNetwork\cacert.pem" (
     echo        [ OK ] cacert.pem present.
 ) else (
     echo        [FAIL] ModernNetwork\cacert.pem not found.
-    echo               Run INSTALL.bat from the stoneChat project root.
+    echo               Run INSTALL.cmd from the stoneChat project root.
     set /a "ERR_COUNT+=1"
 )
 
 :: ---- 5. Disk space >= 100 MB on target drive ----
 echo [ 5/8] Disk space on install drive...
 set "TARGET_DRIVE=%INSTALL_PATH:~0,2%"
-set "FREEBYTES=0"
+set "FREEBYTES="
 for /f "tokens=2 delims=:" %%b in ('fsutil volume diskfree %TARGET_DRIVE% 2^>nul ^| findstr /c:"free bytes"') do (
     set "FREEBYTES=%%b"
 )
 set "FREEBYTES=%FREEBYTES: =%"
-if "%FREEBYTES%"=="" set "FREEBYTES=0"
-if %FREEBYTES% LSS 104857600 (
-    echo        [FAIL] Less than 100 MB free on %TARGET_DRIVE%.
-    echo               Need at least 100 MB; found %FREEBYTES% bytes.
-    set /a "ERR_COUNT+=1"
+set "FREEBYTES=%FREEBYTES:,=%"
+if "%FREEBYTES%"=="" (
+    echo        [WARN] Could not read free disk space on %TARGET_DRIVE%.
+    echo               Continuing; if copy fails, free at least 100 MB
+    echo               or choose another install path.
 ) else (
-    set /a "FREEMB=%FREEBYTES% / 1048576"
-    echo        [ OK ] %FREEMB% MB free on %TARGET_DRIVE%.
+    set "FREE_9=!FREEBYTES:~8,1!"
+    if not "!FREE_9!"=="" (
+        echo        [ OK ] More than 100 MB free on %TARGET_DRIVE%.
+    ) else (
+        if !FREEBYTES! LSS 104857600 (
+            echo        [FAIL] Less than 100 MB free on %TARGET_DRIVE%.
+            echo               Need at least 100 MB; found !FREEBYTES! bytes.
+            set /a "ERR_COUNT+=1"
+        ) else (
+            echo        [ OK ] At least 100 MB free on %TARGET_DRIVE%.
+        )
+    )
 )
 
 :: ---- 6. HISTORY directory creatable at install path ----
@@ -186,10 +253,10 @@ if "!SC_MODERN!"=="1" (
     echo ============================================================
     echo  Windows version notice
     echo ============================================================
-    echo  Detected Windows build !WIN_BUILD! (Windows 10 1809 or newer).
+    echo  Detected Windows build !WIN_BUILD! ^(Windows 10 1809 or newer^).
     echo  Your device looks very modern; many modern tools are available.
     echo.
-    echo  stoneChat is a retro LLM client (IE6 / Windows XP era). It still
+    echo  stoneChat is a retro LLM client ^(IE6 / Windows XP era^). It still
     echo  runs fine on modern hardware; the UI just looks 20+ years old by
     echo  design. Expect a brief "Super-Modern-HTML" splash on the first
     echo  page load of every browser session; it auto-redirects after 3s.
@@ -203,11 +270,12 @@ if "!SC_MODERN!"=="1" (
 
 if !ERR_COUNT! GTR 0 (
     echo ============================================================
-    echo  Environment check FAILED: !ERR_COUNT! error(s) found.
-    echo  Please fix the above issues and re-run INSTALL.bat.
+    echo  Environment check FAILED: !ERR_COUNT! error^(s^) found.
+    echo  Please fix the above issues and re-run INSTALL.cmd.
     echo ============================================================
     echo.
     pause
+    endlocal
     endlocal
     exit /b 1
 )
@@ -230,6 +298,8 @@ if errorlevel 1 goto :copy_failed
 
 xcopy "%~dp0ModernNetwork" "%INSTALL_PATH%\ModernNetwork\" /E /I /Y /Q >nul
 if errorlevel 1 goto :copy_failed
+del "%INSTALL_PATH%\ModernNetwork\stunnel.conf" >nul 2>&1
+del "%INSTALL_PATH%\ModernNetwork\stunnel.pid" >nul 2>&1
 
 xcopy "%~dp0Assets" "%INSTALL_PATH%\Assets\" /E /I /Y /Q >nul
 if errorlevel 1 goto :copy_failed
@@ -237,11 +307,15 @@ if errorlevel 1 goto :copy_failed
 copy /Y "%~dp0RUN.bat" "%INSTALL_PATH%\" >nul
 if errorlevel 1 goto :copy_failed
 
-copy /Y "%~dp0INSTALL.bat" "%INSTALL_PATH%\" >nul
+copy /Y "%~dp0INSTALL.cmd" "%INSTALL_PATH%\" >nul
 if errorlevel 1 goto :copy_failed
 
-copy /Y "%~dp0CONF.ini" "%INSTALL_PATH%\" >nul
-if errorlevel 1 goto :copy_failed
+if exist "%INSTALL_PATH%\CONF.ini" (
+    echo Keeping existing CONF.ini.
+) else (
+    copy /Y "%~dp0CONF.ini" "%INSTALL_PATH%\" >nul
+    if errorlevel 1 goto :copy_failed
+)
 
 if exist "%~dp0README" copy /Y "%~dp0README" "%INSTALL_PATH%\" >nul
 if exist "%~dp0LICENSE.txt" copy /Y "%~dp0LICENSE.txt" "%INSTALL_PATH%\" >nul
@@ -254,6 +328,7 @@ echo [ERROR] Failed to copy files to "%INSTALL_PATH%".
 echo         Check disk space, folder permissions, and try again.
 echo.
 pause
+endlocal
 endlocal
 exit /b 1
 
@@ -283,11 +358,12 @@ echo.
 :: ============================================================
 if exist "%INSTALL_PATH%\Server\install.php" (
     echo Running Server\install.php...
-    php "%INSTALL_PATH%\Server\install.php"
+    php "%INSTALL_PATH%\Server\install.php" --init-history --init-langs --init-login-log
     if errorlevel 1 (
         echo [ERROR] Server\install.php failed. Aborting.
         echo.
         pause
+        endlocal
         endlocal
         exit /b 1
     )
@@ -298,53 +374,48 @@ if exist "%INSTALL_PATH%\Server\install.php" (
 echo.
 
 :: ============================================================
-:: Create Desktop and Start Menu shortcuts via PowerShell + WshShell COM
+:: Create Desktop and Start Menu shortcuts via Windows Script Host
 :: ============================================================
 echo ============================================================
 echo  Creating shortcuts
 echo ============================================================
-:: Detect PowerShell portably: 'where' is Vista+, so probe directly.
-powershell -Command "exit 0" >nul 2>&1
+:: Windows Script Host is present on XP by default and is already
+:: listed as an installer requirement.
+set "VBS_FILE=%TEMP%\stonechat_install_%RANDOM%.vbs"
+
+>  "%VBS_FILE%" echo Set ws = CreateObject("WScript.Shell")
+>> "%VBS_FILE%" echo Set fso = CreateObject("Scripting.FileSystemObject")
+>> "%VBS_FILE%" echo desktop = ws.SpecialFolders("Desktop")
+>> "%VBS_FILE%" echo programs = ws.SpecialFolders("Programs")
+>> "%VBS_FILE%" echo programDir = programs ^& "\stoneChat"
+>> "%VBS_FILE%" echo If Not fso.FolderExists(programDir) Then fso.CreateFolder(programDir)
+>> "%VBS_FILE%" echo installPath = ws.ExpandEnvironmentStrings("%%INSTALL_PATH%%")
+>> "%VBS_FILE%" echo runBat = installPath ^& "\RUN.bat"
+>> "%VBS_FILE%" echo workDir = installPath
+>> "%VBS_FILE%" echo iconPath = installPath ^& "\Assets\logo.png"
+>> "%VBS_FILE%" echo Set sc1 = ws.CreateShortcut(desktop ^& "\stoneChat.lnk")
+>> "%VBS_FILE%" echo sc1.TargetPath = runBat
+>> "%VBS_FILE%" echo sc1.WorkingDirectory = workDir
+>> "%VBS_FILE%" echo sc1.IconLocation = iconPath
+>> "%VBS_FILE%" echo sc1.Description = "stoneChat - LLM Web Chat"
+>> "%VBS_FILE%" echo sc1.WindowStyle = 7
+>> "%VBS_FILE%" echo sc1.Save
+>> "%VBS_FILE%" echo Set sc2 = ws.CreateShortcut(programDir ^& "\stoneChat.lnk")
+>> "%VBS_FILE%" echo sc2.TargetPath = runBat
+>> "%VBS_FILE%" echo sc2.WorkingDirectory = workDir
+>> "%VBS_FILE%" echo sc2.IconLocation = iconPath
+>> "%VBS_FILE%" echo sc2.Description = "stoneChat - LLM Web Chat"
+>> "%VBS_FILE%" echo sc2.WindowStyle = 7
+>> "%VBS_FILE%" echo sc2.Save
+
+cscript //nologo "%VBS_FILE%"
 if errorlevel 1 (
-    echo [WARN] PowerShell not found. Shortcuts not created.
-    echo        stoneChat is installed at: "%INSTALL_PATH%"
-    echo        Use RUN.bat there to start it manually.
-    goto :shortcut_done
-)
-
-:: Materialize a small PowerShell script in %TEMP%, then invoke it.
-:: PowerShell here uses WshShell COM (XP-compatible WSH via PS 1.0/2.0).
-set "PS_FILE=%TEMP%\stonechat_install_%RANDOM%.ps1"
-
->  "%PS_FILE%" echo $ErrorActionPreference = 'Stop'
->> "%PS_FILE%" echo $ws = New-Object -ComObject WScript.Shell
->> "%PS_FILE%" echo $desktop = [Environment]::GetFolderPath('Desktop')
->> "%PS_FILE%" echo $startMenu = [Environment]::GetFolderPath('StartMenu')
->> "%PS_FILE%" echo $programsDir = $startMenu ^+ '\Programs\stoneChat'
->> "%PS_FILE%" echo if ^(-not ^(Test-Path $programsDir^)^) { New-Item -ItemType Directory -Path $programsDir -Force ^| Out-Null }
->> "%PS_FILE%" echo $sc1 = $ws.CreateShortcut^($desktop ^+ '\stoneChat.lnk'^)
->> "%PS_FILE%" echo $sc1.TargetPath = '%INSTALL_PATH%\RUN.bat'
->> "%PS_FILE%" echo $sc1.WorkingDirectory = '%INSTALL_PATH%'
->> "%PS_FILE%" echo $sc1.IconLocation = '%INSTALL_PATH%\Assets\logo.png'
->> "%PS_FILE%" echo $sc1.Description = 'stoneChat - LLM Web Chat'
->> "%PS_FILE%" echo $sc1.WindowStyle = 7
->> "%PS_FILE%" echo $sc1.Save^(^)
->> "%PS_FILE%" echo $sc2 = $ws.CreateShortcut^($programsDir ^+ '\stoneChat.lnk'^)
->> "%PS_FILE%" echo $sc2.TargetPath = '%INSTALL_PATH%\RUN.bat'
->> "%PS_FILE%" echo $sc2.WorkingDirectory = '%INSTALL_PATH%'
->> "%PS_FILE%" echo $sc2.IconLocation = '%INSTALL_PATH%\Assets\logo.png'
->> "%PS_FILE%" echo $sc2.Description = 'stoneChat - LLM Web Chat'
->> "%PS_FILE%" echo $sc2.WindowStyle = 7
->> "%PS_FILE%" echo $sc2.Save^(^)
->> "%PS_FILE%" echo Write-Host 'Shortcuts created.'
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
-if errorlevel 1 (
-    echo [WARN] PowerShell reported an error. Shortcuts may be missing.
+    echo [WARN] Windows Script Host reported an error.
+    echo        Shortcuts may be missing. Use RUN.bat manually.
 ) else (
     echo Shortcuts created.
 )
-del "%PS_FILE%" >nul 2>&1
+del "%VBS_FILE%" >nul 2>&1
 
 :shortcut_done
 echo.
@@ -356,14 +427,14 @@ echo ============================================================
 echo  stoneChat installed successfully!
 echo ============================================================
 echo.
-echo   Install path : %INSTALL_PATH%
-echo   Web URL      : http://localhost:9999/
+echo   Install path : !INSTALL_PATH!
+echo   Web URL      : http://localhost:!SC_PORT!/
 echo.
 echo   Double-click the desktop icon, or run:
-echo       "%INSTALL_PATH%\RUN.bat"
+echo       "!INSTALL_PATH!\RUN.bat"
 echo.
 if "!SC_MODERN!"=="1" (
-    echo   Note: your Windows build is ^>=^= 10 1809, so the first page load
+    echo   Note: your Windows build is ^>= 10 1809, so the first page load
     echo   of every browser session will show a brief "Super-Modern-HTML"
     echo   splash for 3 seconds before the retro UI appears. This is by
     echo   design and is safe to dismiss by waiting.
@@ -374,5 +445,6 @@ echo   before the first chat.
 echo ============================================================
 echo.
 pause
+endlocal
 endlocal
 exit /b 0

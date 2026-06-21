@@ -11,6 +11,7 @@
  *   sc_is_placeholder_password($pw)    is the password an unfilled stub?
  *   sc_validate_path_resolve($p, $b)   resolve a path under a base
  *   sc_validate_config($cfg)           check keys; error code list
+ *   sc_config_fatal_errors($errors)    startup-blocking subset
  *
  * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */
@@ -42,6 +43,82 @@ if (!function_exists('sc_provider_section_name')) {
     }
 }
 
+/* sc_ini_raw_value($value)
+ *   Minimal raw INI value cleanup for provider scalar overrides. */
+if (!function_exists('sc_ini_raw_value')) {
+    function sc_ini_raw_value($value) {
+        $text = trim((string)$value);
+        $len = strlen($text);
+        if ($len >= 2) {
+            $first = substr($text, 0, 1);
+            $last  = substr($text, -1);
+            if (($first === '"' && $last === '"')
+                || ($first === "'" && $last === "'")) {
+                return substr($text, 1, $len - 2);
+            }
+        }
+        $out = '';
+        for ($i = 0; $i < $len; $i++) {
+            $ch = substr($text, $i, 1);
+            if ($ch === ';' || $ch === '#') {
+                break;
+            }
+            $out .= $ch;
+        }
+        return trim($out);
+    }
+}
+
+/* sc_load_provider_raw_scalars($ini_path)
+ *   parse_ini_file() turns false/no/off into empty strings in PHP 5.x.
+ *   Read only provider stream/max_tokens/timeout as raw text. */
+if (!function_exists('sc_load_provider_raw_scalars')) {
+    function sc_load_provider_raw_scalars($ini_path) {
+        if (!is_string($ini_path) || !is_file($ini_path)
+            || !is_readable($ini_path)) {
+            return array();
+        }
+        $lines = @file($ini_path);
+        if (!is_array($lines)) {
+            return array();
+        }
+        $out = array();
+        $current = 0;
+        foreach ($lines as $line) {
+            $t = trim((string)$line);
+            if ($t === '' || substr($t, 0, 1) === ';'
+                || substr($t, 0, 1) === '#') {
+                continue;
+            }
+            if (preg_match('/^\[\s*Provider\s+(\d+)\s*\]$/i', $t, $m)) {
+                $current = (int)$m[1];
+                if (!isset($out[$current])) {
+                    $out[$current] = array();
+                }
+                continue;
+            }
+            if (substr($t, 0, 1) === '[') {
+                $current = 0;
+                continue;
+            }
+            if ($current <= 0) {
+                continue;
+            }
+            if (!preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/',
+                            $t, $m)) {
+                continue;
+            }
+            $key = strtolower($m[1]);
+            if ($key !== 'stream' && $key !== 'max_tokens'
+                && $key !== 'timeout') {
+                continue;
+            }
+            $out[$current][$key] = sc_ini_raw_value($m[2]);
+        }
+        return $out;
+    }
+}
+
 /* sc_load_providers($ini_path)
  *   Read [Provider N] sections from CONF.ini as a normalized list.
  *
@@ -52,6 +129,9 @@ if (!function_exists('sc_provider_section_name')) {
  *     'api_base' => string,
  *     'api_key'  => string,
  *     'model'    => string,
+ *     'stream'   => string, // optional raw scalar
+ *     'max_tokens' => string, // optional raw scalar
+ *     'timeout'  => string, // optional raw scalar
  *   )
  *
  *   Returned in numeric order (Provider 1, 2, ...). Sections with
@@ -79,8 +159,24 @@ if (!function_exists('sc_load_providers')) {
             return array();
         }
         ksort($buckets, SORT_NUMERIC);
+        $raw_scalars = sc_load_provider_raw_scalars($ini_path);
         $providers = array();
-        foreach ($buckets as $section_data) {
+        foreach ($buckets as $provider_no => $section_data) {
+            $raw = isset($raw_scalars[$provider_no])
+                   && is_array($raw_scalars[$provider_no])
+                   ? $raw_scalars[$provider_no] : array();
+            $stream = isset($raw['stream'])
+                      ? (string)$raw['stream']
+                      : (isset($section_data['stream'])
+                         ? (string)$section_data['stream'] : '');
+            $max_tokens = isset($raw['max_tokens'])
+                          ? (string)$raw['max_tokens']
+                          : (isset($section_data['max_tokens'])
+                             ? (string)$section_data['max_tokens'] : '');
+            $timeout = isset($raw['timeout'])
+                       ? (string)$raw['timeout']
+                       : (isset($section_data['timeout'])
+                          ? (string)$section_data['timeout'] : '');
             $providers[] = array(
                 'id'       => isset($section_data['id'])
                               ? (string)$section_data['id'] : '',
@@ -94,9 +190,38 @@ if (!function_exists('sc_load_providers')) {
                               ? (string)$section_data['api_key'] : '',
                 'model'    => isset($section_data['model'])
                               ? (string)$section_data['model'] : '',
+                'stream'   => $stream,
+                'max_tokens' => $max_tokens,
+                'timeout'  => $timeout,
             );
         }
         return $providers;
+    }
+}
+
+/* sc_config_fatal_errors($errors)
+ *   Filter sc_validate_config() output to errors that must block
+ *   startup. Provider-specific problems are shown in the provider UI;
+ *   stunnel/cacert paths are checked by RUN.bat with better hints. */
+if (!function_exists('sc_config_fatal_errors')) {
+    function sc_config_fatal_errors($errors) {
+        if (!is_array($errors)) {
+            return array('config_errors_not_array');
+        }
+        $fatal = array();
+        $fatal_map = array(
+            'config_not_array' => true,
+            'missing_server_port' => true,
+            'missing_auth_password' => true,
+            'auth_password_is_placeholder' => true,
+        );
+        foreach ($errors as $err) {
+            $code = (string)$err;
+            if (isset($fatal_map[$code])) {
+                $fatal[] = $code;
+            }
+        }
+        return $fatal;
     }
 }
 

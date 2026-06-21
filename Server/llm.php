@@ -48,12 +48,49 @@ if (!function_exists('sc_llm_resolve_endpoint')) {
         if (!is_array($parts) || empty($parts['host'])) {
             return array();
         }
+        $scheme = isset($parts['scheme'])
+                  ? strtolower((string)$parts['scheme']) : 'https';
+        $default_port = ($scheme === 'http') ? 80 : 443;
         return array(
+            'scheme'      => $scheme,
             'host'        => $parts['host'],
-            'port'        => isset($parts['port']) ? (int)$parts['port'] : 443,
+            'port'        => isset($parts['port']) ? (int)$parts['port']
+                                                   : $default_port,
             'path_prefix' => isset($parts['path'])
                              ? rtrim($parts['path'], '/') : '',
         );
+    }
+}
+
+/* sc_llm_max_tokens($provider_config)
+ *   Read a sane max_tokens value from a provider row. */
+if (!function_exists('sc_llm_max_tokens')) {
+    function sc_llm_max_tokens($provider_config) {
+        if (is_array($provider_config) && isset($provider_config['max_tokens'])
+            && is_numeric($provider_config['max_tokens'])
+            && (int)$provider_config['max_tokens'] > 0) {
+            return (int)$provider_config['max_tokens'];
+        }
+        return 1024;
+    }
+}
+
+/* sc_llm_request_path($endpoint, $path_suffix)
+ *   Build the HTTP path. Normal API bases are prefixes (/v1);
+ *   local PHP mock endpoints are already complete files. */
+if (!function_exists('sc_llm_request_path')) {
+    function sc_llm_request_path($endpoint, $path_suffix) {
+        $prefix = '';
+        if (is_array($endpoint) && isset($endpoint['path_prefix'])) {
+            $prefix = (string)$endpoint['path_prefix'];
+        }
+        if ($prefix === '') {
+            return (string)$path_suffix;
+        }
+        if (preg_match('/\.php$/i', $prefix)) {
+            return $prefix;
+        }
+        return rtrim($prefix, '/') . '/' . ltrim((string)$path_suffix, '/');
     }
 }
 
@@ -136,36 +173,41 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
         if (empty($ep)) {
             return array('error' => 'invalid_api_base');
         }
-        $ini_path   = dirname(__FILE__) . '/../CONF.ini';
-        $modern_dir = dirname(__FILE__) . '/../ModernNetwork';
-        $cfg = sc_load_modern_config($ini_path);
-        if (empty($cfg) || $cfg['stunnel'] === ''
-            || $cfg['ca_cert'] === '') {
-            return array('error' => 'config_error');
-        }
         $target = array('host' => $ep['host'], 'port' => $ep['port']);
-        $full_path = $ep['path_prefix'] . $path_suffix;
+        $full_path = sc_llm_request_path($ep, $path_suffix);
         $body_str  = ($body === null) ? '' : (string)$body;
         $hdrs      = is_array($headers) ? $headers : array();
 
+        $scheme = isset($ep['scheme']) ? (string)$ep['scheme'] : 'https';
         $is_local = ($target['host'] === 'localhost'
                      || $target['host'] === '127.0.0.1');
-        if ($is_local) {
+        $is_plain_http = ($scheme === 'http');
+        if ($is_plain_http || $is_local) {
             $resp = sc_http_send_raw(
                 $target['port'], $method, $target['host'], $full_path,
-                $hdrs, $body_str, 60, $stream_callback
+                $hdrs, $body_str, 60, $stream_callback,
+                $is_plain_http ? $target['host'] : '127.0.0.1'
             );
             /* When the target is a localhost mock and the port is
-             * closed, distinguish that case from a generic tunnel
+             * closed, distinguish that case from a generic direct-HTTP
              * failure: "mock_unreachable" tells the UI to surface a
-             * setup hint (start the mock on 9998) instead of blaming
-             * the network layer. */
+             * setup hint (start the mock on 9998). */
             if (!is_array($resp)
                 || (isset($resp['error'])
                     && $resp['error'] === 'connection_failed')) {
-                return array('error' => 'mock_unreachable');
+                if ($is_local) {
+                    return array('error' => 'mock_unreachable');
+                }
+                return array('error' => 'connection_failed');
             }
         } else {
+            $ini_path   = dirname(__FILE__) . '/../CONF.ini';
+            $modern_dir = dirname(__FILE__) . '/../ModernNetwork';
+            $cfg = sc_load_modern_config($ini_path);
+            if (empty($cfg) || $cfg['stunnel'] === ''
+                || $cfg['ca_cert'] === '') {
+                return array('error' => 'config_error');
+            }
             if (!sc_ensure_tunnel($target, $cfg, $modern_dir)) {
                 return array('error' => 'stunnel_start_failed');
             }
@@ -243,12 +285,13 @@ if (!function_exists('sc_llm_defensive_sse_parse')) {
     }
 }
 
-/* sc_llm_build_openai_body($model, $messages, $system_prompt, $stream)
+/* sc_llm_build_openai_body($model, $messages, $system_prompt, $stream,
+ *                          $max_tokens)
  *   Build the OpenAI chat/completions request body. Prepends the
  *   system prompt as a system message; ignores non-array entries. */
 if (!function_exists('sc_llm_build_openai_body')) {
     function sc_llm_build_openai_body($model, $messages, $system_prompt,
-                                      $stream = false) {
+                                      $stream = false, $max_tokens = 1024) {
         $msgs = array();
         if (is_string($system_prompt) && $system_prompt !== '') {
             $msgs[] = array('role' => 'system', 'content' => $system_prompt);
@@ -266,19 +309,21 @@ if (!function_exists('sc_llm_build_openai_body')) {
         return array(
             'model'      => (string)$model,
             'messages'   => $msgs,
-            'max_tokens' => 1024,
+            'max_tokens' => ((int)$max_tokens > 0) ? (int)$max_tokens : 1024,
             'stream'     => (bool)$stream,
         );
     }
 }
 
-/* sc_llm_build_anthropic_body($model, $messages, $system_prompt, $stream)
+/* sc_llm_build_anthropic_body($model, $messages, $system_prompt, $stream,
+ *                             $max_tokens)
  *   Build the Anthropic messages request body. The system prompt
  *   is a top-level "system" field (per Anthropic API); it is NOT
  *   prepended to messages. */
 if (!function_exists('sc_llm_build_anthropic_body')) {
     function sc_llm_build_anthropic_body($model, $messages, $system_prompt,
-                                         $stream = false) {
+                                         $stream = false,
+                                         $max_tokens = 1024) {
         $msgs = array();
         if (is_array($messages)) {
             foreach ($messages as $m) {
@@ -293,7 +338,7 @@ if (!function_exists('sc_llm_build_anthropic_body')) {
         $body = array(
             'model'      => (string)$model,
             'messages'   => $msgs,
-            'max_tokens' => 1024,
+            'max_tokens' => ((int)$max_tokens > 0) ? (int)$max_tokens : 1024,
             'stream'     => (bool)$stream,
         );
         if (is_string($system_prompt) && $system_prompt !== '') {
@@ -429,7 +474,8 @@ if (!function_exists('sc_llm_openai')) {
             return array('ok' => false, 'error' => 'missing_provider_fields');
         }
         $body = sc_llm_build_openai_body($model, $messages, $system_prompt,
-                                         $stream_callback !== null);
+                                         $stream_callback !== null,
+                                         sc_llm_max_tokens($provider_config));
         if (empty($body['messages'])) {
             return array('ok' => false, 'error' => 'empty_messages');
         }
@@ -456,8 +502,7 @@ if (!function_exists('sc_llm_openai')) {
         }
         $raw_body = isset($resp['body']) ? $resp['body'] : '';
         $status   = isset($resp['status']) ? (int)$resp['status'] : 0;
-        return sc_llm_parse_openai_response($raw_body, $status,
-                                            $stream_callback);
+        return sc_llm_parse_openai_response($raw_body, $status, null);
     }
 }
 
@@ -474,7 +519,8 @@ if (!function_exists('sc_llm_anthropic')) {
             return array('ok' => false, 'error' => 'missing_provider_fields');
         }
         $body = sc_llm_build_anthropic_body($model, $messages, $system_prompt,
-                                            $stream_callback !== null);
+                                            $stream_callback !== null,
+                                            sc_llm_max_tokens($provider_config));
         if (empty($body['messages'])) {
             return array('ok' => false, 'error' => 'empty_messages');
         }
@@ -502,8 +548,7 @@ if (!function_exists('sc_llm_anthropic')) {
         }
         $raw_body = isset($resp['body']) ? $resp['body'] : '';
         $status   = isset($resp['status']) ? (int)$resp['status'] : 0;
-        return sc_llm_parse_anthropic_response($raw_body, $status,
-                                               $stream_callback);
+        return sc_llm_parse_anthropic_response($raw_body, $status, null);
     }
 }
 

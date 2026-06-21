@@ -8,6 +8,20 @@
     return true;
   }
 
+  function hasModernWindowsCookie() {
+    var cookie = '';
+    try {
+      cookie = String(document.cookie || '');
+    } catch (e) {
+      cookie = '';
+    }
+    return ('; ' + cookie + ';').indexOf('; sc_modern=1;') !== -1;
+  }
+
+  if (!hasModernWindowsCookie()) {
+    return;
+  }
+
   if (!checkModernBrowser()) {
     return;
   }
