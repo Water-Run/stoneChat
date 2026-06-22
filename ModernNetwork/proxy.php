@@ -224,9 +224,19 @@ if (!function_exists('sc_pid_alive')) {
 }
 
 /* sc_stunnel_is_running($pid_path)
- *   Is stunnel running? Returns PID (int) or false. */
+ *   Check if the stunnel process (by PID file) is alive. */
 if (!function_exists('sc_stunnel_is_running')) {
     function sc_stunnel_is_running($pid_path) {
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            $output = array();
+            @exec('tasklist /FI "IMAGENAME eq stunnel.exe" 2>NUL', $output);
+            foreach ($output as $line) {
+                if (stripos($line, 'stunnel.exe') !== false) {
+                    return 999999; /* dummy PID */
+                }
+            }
+            return false;
+        }
         if (!is_file($pid_path) || !is_readable($pid_path)) {
             return false;
         }
