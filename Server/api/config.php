@@ -141,15 +141,23 @@ if (!function_exists('sc_api_config_build_payload')) {
             && (string)$cfg['ui']['theme'] !== '') {
             $theme = (string)$cfg['ui']['theme'];
         }
+        $allow_online_editor = false;
+        if (isset($cfg['ui']['allow_online_editor'])) {
+            $flag = sc_api_config_truthy($cfg['ui']['allow_online_editor']);
+            if ($flag !== null) {
+                $allow_online_editor = $flag;
+            }
+        }
         return array(
-            'title'        => $title,
-            'default_lang' => $default_lang,
-            'theme'        => $theme,
-            'providers'    => sc_api_config_sanitize_providers(
-                                  sc_load_providers($path)
-                              ),
-            'langs'        => sc_i18n_supported_langs(),
-            'auth_enabled' => sc_api_config_resolve_auth_enabled($cfg),
+            'title'               => $title,
+            'default_lang'        => $default_lang,
+            'theme'               => $theme,
+            'allow_online_editor' => $allow_online_editor,
+            'providers'           => sc_api_config_sanitize_providers(
+                                         sc_load_providers($path)
+                                     ),
+            'langs'               => sc_i18n_supported_langs(),
+            'auth_enabled'        => sc_api_config_resolve_auth_enabled($cfg),
         );
     }
 }

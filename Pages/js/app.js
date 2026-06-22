@@ -345,12 +345,16 @@
     // to pick up the changes.
     // -------------------------------------------------------------------------
     function openConfigFile() {
-        alert(
-            'CONF.ini lives on the server host, next to RUN.bat.\n\n'
-          + 'A browser page cannot open a local file from the server.\n'
-          + 'Edit CONF.ini with Notepad (or INSTALL.cmd reopens it),\n'
-          + 'then click "Reload config" to apply the changes.'
-        );
+        if (currentConfig && currentConfig.allow_online_editor === true) {
+            window.open('editor.php', '_blank', 'width=800,height=600');
+        } else {
+            alert(
+                'CONF.ini lives on the server host, next to RUN.bat.\n\n'
+              + 'Online config editor is DISABLED in CONF.ini (allow_online_editor = false).\n'
+              + 'Edit CONF.ini manually with Notepad (or INSTALL.cmd reopens it),\n'
+              + 'then click "Reload config" to apply the changes.'
+            );
+        }
     }
 
     // -------------------------------------------------------------------------
