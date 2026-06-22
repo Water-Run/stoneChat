@@ -106,6 +106,12 @@ if (!function_exists('sc_strict_environment_check')) {
             }
         }
         if (!is_file($stunnel_path)) {
+            $fallback = 'C:\\Program Files (x86)\\stunnel\\bin\\stunnel.exe';
+            if (is_file($fallback)) {
+                $stunnel_path = $fallback;
+            }
+        }
+        if (!is_file($stunnel_path)) {
             header('HTTP/1.1 500 Internal Server Error');
             echo "Error: stunnel.exe not found at: " . $stunnel_path
                . ". stoneChat requires stunnel for HTTPS tunnel "

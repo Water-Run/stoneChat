@@ -28,6 +28,15 @@ if (!function_exists('sc_load_config')) {
         if (!is_array($parsed)) {
             return array();
         }
+        if (isset($parsed['paths']) && is_array($parsed['paths']) && isset($parsed['paths']['stunnel'])) {
+            $sp = $parsed['paths']['stunnel'];
+            if (!is_file($sp)) {
+                $sp_fallback = 'C:\\Program Files (x86)\\stunnel\\bin\\stunnel.exe';
+                if (is_file($sp_fallback)) {
+                    $parsed['paths']['stunnel'] = $sp_fallback;
+                }
+            }
+        }
         return $parsed;
     }
 }
