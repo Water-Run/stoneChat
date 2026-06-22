@@ -10,12 +10,31 @@ Vista or later. The app code itself is written to run on any PHP 5.x.
 As for all the remaining network-related problems, let the program handle them. You will also need stunnel for HTTPS:
 https://www.stunnel.org/downloads.html
 
-Download or clone this Project. Run INSTALL.cmd (recommended) or RUN.bat to start the program. RUN.bat now performs a full pre-flight environment check (PHP version, port availability, CONF.ini validity, stunnel path, cacert.pem, HISTORY/ writability) and refuses to start with a clear error message if anything is missing. INSTALL.cmd runs the same checks plus registry / disk / install-path checks before copying files.
+Install:
+  Run INSTALL.cmd. It checks your environment (PHP 5.4+, stunnel, disk
+  space, write permissions), copies all files to the chosen folder
+  (default: C:\stoneChat), creates HISTORY\ for chat logs, and adds a
+  Desktop shortcut and a Start Menu entry pointing to RUN.bat.
+  Edit CONF.ini in the install folder to set your API keys and password
+  before the first chat. Placeholder values are rejected at startup.
 
-You need to edit CONF.ini according to the comments to configure the LLM and other settings -- it is very simple, just follow the comments. Placeholder values like YOUR_PASSWORD_HERE and YOUR_*_API_KEY_HERE are now rejected by the validator: replace them with real secrets before starting the server.
+  To run without installing: edit CONF.ini in the download folder and
+  double-click RUN.bat directly. RUN.bat performs the same pre-flight
+  checks (PHP version, port, CONF.ini validity, stunnel, cacert.pem,
+  HISTORY\ writability) and refuses to start if anything is missing.
+
+Uninstall:
+  Double-click UNINSTALL.cmd from any location (install folder or
+  download folder). It reads the Desktop shortcut to find the real
+  install path, stops the PHP server, removes the Desktop and Start
+  Menu shortcuts, then deletes the install folder. Type YES when
+  prompted to confirm. If no shortcut is found it falls back to the
+  folder where UNINSTALL.cmd lives.
 
 Then visit it in your browser. The default address is:
-http://localhost:9999
+  http://localhost:9999
+
+You need to edit CONF.ini according to the comments to configure the LLM and other settings -- it is very simple, just follow the comments. Placeholder values like YOUR_PASSWORD_HERE and YOUR_*_API_KEY_HERE are now rejected by the validator: replace them with real secrets before starting the server.
 
 stoneChat is open-sourced under WTFPL at:
 https://github.com/Water-Run/stoneChat
