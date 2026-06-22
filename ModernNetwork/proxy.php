@@ -228,12 +228,18 @@ if (!function_exists('sc_pid_alive')) {
 if (!function_exists('sc_stunnel_is_running')) {
     function sc_stunnel_is_running($pid_path) {
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            $output = array();
-            @exec('tasklist /FI "IMAGENAME eq stunnel.exe" 2>NUL', $output);
-            foreach ($output as $line) {
-                if (stripos($line, 'stunnel.exe') !== false) {
-                    return 999999; /* dummy PID */
+            $port = 8443;
+            if (function_exists('sc_load_modern_config')) {
+                $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'CONF.ini';
+                $cfg = sc_load_modern_config($ini);
+                if (!empty($cfg['proxy_port'])) {
+                    $port = (int)$cfg['proxy_port'];
                 }
+            }
+            $fp = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
+            if ($fp !== false) {
+                fclose($fp);
+                return 999999; /* dummy PID */
             }
             return false;
         }
