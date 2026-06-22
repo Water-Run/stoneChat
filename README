@@ -10,18 +10,23 @@ Vista or later. The app code itself is written to run on any PHP 5.x.
 As for all the remaining network-related problems, let the program handle them. You will also need stunnel for HTTPS:
 https://www.stunnel.org/downloads.html
 
-Install:
+Download / Clone:
+  Clone the repository or download the ZIP.
+  Before starting, copy `CONF_SMP.INI` to `CONF.ini` and edit it to set
+  your API keys, password, and providers (e.g. OpenAI, Minimax, etc.).
+
+Install (Optional):
   Run INSTALL.cmd. It checks your environment (PHP 5.4+, stunnel, disk
   space, write permissions), copies all files to the chosen folder
   (default: C:\stoneChat), creates HISTORY\ for chat logs, and adds a
   Desktop shortcut and a Start Menu entry pointing to RUN.bat.
-  Edit CONF.ini in the install folder to set your API keys and password
-  before the first chat. Placeholder values are rejected at startup.
+  (If CONF.ini is missing, the installer will automatically copy
+  CONF_SMP.INI to CONF.ini for you).
 
-  To run without installing: edit CONF.ini in the download folder and
-  double-click RUN.bat directly. RUN.bat performs the same pre-flight
-  checks (PHP version, port, CONF.ini validity, stunnel, cacert.pem,
-  HISTORY\ writability) and refuses to start if anything is missing.
+To run directly:
+  Double-click RUN.bat. It performs the same pre-flight checks and starts
+  the local web server. If CONF.ini is missing, RUN.bat will also create
+  one from the CONF_SMP.INI template.
 
 Uninstall:
   Double-click UNINSTALL.cmd from any location (install folder or
