@@ -154,6 +154,11 @@ if "!PHP_OK!"=="1" (
     if "!SC_PORT!"=="" set "SC_PORT=9999"
     for /f "delims=" %%s in ('php -r "require 'Server/config.php';$c=sc_load_config('CONF.ini');echo isset($c['paths']['stunnel'])?$c['paths']['stunnel']:'';" 2^>nul') do set "STUNNEL_PATH=%%s"
     if "!STUNNEL_PATH!"=="" set "STUNNEL_PATH=C:\Program Files\stunnel\bin\stunnel.exe"
+    if not exist "!STUNNEL_PATH!" (
+        if exist "C:\Program Files (x86)\stunnel\bin\stunnel.exe" (
+            set "STUNNEL_PATH=C:\Program Files (x86)\stunnel\bin\stunnel.exe"
+        )
+    )
 )
 
 :: ---- 2. server port free ----
