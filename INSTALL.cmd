@@ -40,7 +40,7 @@ echo.
 :: ------------------------------------------------------------
 :: Prompt for install path
 :: ------------------------------------------------------------
-set "DEFAULT_INSTALL_PATH=C:\Program Files\stoneChat"
+set "DEFAULT_INSTALL_PATH=C:\stoneChat"
 set "INSTALL_PATH="
 
 if not "%~1"=="" (
@@ -50,8 +50,14 @@ if not "%~1"=="" (
 )
 if "%INSTALL_PATH%"=="" set "INSTALL_PATH=%DEFAULT_INSTALL_PATH%"
 
-:: Strip a single trailing backslash for consistent quoting later.
+:: Strip a single trailing backslash.
 if "%INSTALL_PATH:~-1%"=="\" set "INSTALL_PATH=%INSTALL_PATH:~0,-1%"
+
+:: Immediate feedback so user sees the path was accepted.
+echo.
+echo   Accepted : %INSTALL_PATH%
+echo   (to change, re-run INSTALL.cmd and type a different path)
+echo.
 
 echo("%INSTALL_PATH%" | find "!" >nul
 if not errorlevel 1 (
@@ -405,7 +411,7 @@ set "VBS_FILE=%TEMP%\stonechat_install_%RANDOM%.vbs"
 >> "%VBS_FILE%" echo installPath = ws.ExpandEnvironmentStrings("%%INSTALL_PATH%%")
 >> "%VBS_FILE%" echo runBat = installPath ^& "\RUN.bat"
 >> "%VBS_FILE%" echo workDir = installPath
->> "%VBS_FILE%" echo iconPath = installPath ^& "\Assets\logo.png"
+>> "%VBS_FILE%" echo iconPath = installPath ^& "\Assets\logo.ico,0"
 >> "%VBS_FILE%" echo Set sc1 = ws.CreateShortcut(desktop ^& "\stoneChat.lnk")
 >> "%VBS_FILE%" echo sc1.TargetPath = runBat
 >> "%VBS_FILE%" echo sc1.WorkingDirectory = workDir

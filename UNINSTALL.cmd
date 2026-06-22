@@ -1,0 +1,117 @@
+@echo off
+:: ============================================================
+:: stoneChat Uninstaller (UNINSTALL.cmd)
+:: Compatible with Windows XP / Vista / 7 / 10 / 11
+:: No PowerShell. Uses Windows Script Host for shortcut removal.
+:: ============================================================
+
+setlocal DisableDelayedExpansion
+
+chcp 65001 >nul
+cd /d "%~dp0"
+
+echo.
+echo ============================================================
+echo   stoneChat Uninstaller
+echo ============================================================
+echo.
+
+:: ------------------------------------------------------------
+:: Detect install path
+:: Default: the folder where UNINSTALL.cmd lives (the install dir).
+:: ------------------------------------------------------------
+set "REMOVE_PATH=%~dp0"
+:: Strip trailing backslash.
+if "%REMOVE_PATH:~-1%"=="\" set "REMOVE_PATH=%REMOVE_PATH:~0,-1%"
+
+echo   This will remove stoneChat from your computer.
+echo.
+echo   Detected install path:
+echo     %REMOVE_PATH%
+echo.
+echo   The following will be deleted:
+echo     - All files in the folder above
+echo     - Desktop shortcut "stoneChat"
+echo     - Start Menu shortcut "stoneChat"
+echo.
+echo   Type YES (uppercase) and press Enter to confirm.
+echo   Press Enter without typing to cancel.
+echo.
+set /p "CONFIRM=Confirm: "
+if /i not "%CONFIRM%"=="YES" (
+    echo.
+    echo   Cancelled. Nothing was removed.
+    echo.
+    pause
+    endlocal
+    exit /b 0
+)
+
+echo.
+echo ============================================================
+echo   Removing stoneChat
+echo ============================================================
+
+:: ------------------------------------------------------------
+:: 1. Stop running PHP server (if any)
+:: ------------------------------------------------------------
+echo.
+echo [ 1/3] Stopping PHP server (if running)...
+taskkill /F /IM php.exe /T >nul 2>&1
+echo        Done.
+
+:: ------------------------------------------------------------
+:: 2. Remove Desktop and Start Menu shortcuts via WSH
+:: ------------------------------------------------------------
+echo.
+echo [ 2/3] Removing shortcuts...
+set "VBS_FILE=%TEMP%\stonechat_uninstall_%RANDOM%.vbs"
+
+>  "%VBS_FILE%" echo Set ws  = CreateObject("WScript.Shell")
+>> "%VBS_FILE%" echo Set fso = CreateObject("Scripting.FileSystemObject")
+>> "%VBS_FILE%" echo desktop  = ws.SpecialFolders("Desktop")
+>> "%VBS_FILE%" echo programs = ws.SpecialFolders("Programs")
+>> "%VBS_FILE%" echo lnk1 = desktop ^& "\stoneChat.lnk"
+>> "%VBS_FILE%" echo lnk2 = programs ^& "\stoneChat\stoneChat.lnk"
+>> "%VBS_FILE%" echo dir2 = programs ^& "\stoneChat"
+>> "%VBS_FILE%" echo If fso.FileExists(lnk1)   Then fso.DeleteFile   lnk1
+>> "%VBS_FILE%" echo If fso.FileExists(lnk2)   Then fso.DeleteFile   lnk2
+>> "%VBS_FILE%" echo If fso.FolderExists(dir2)  Then fso.DeleteFolder dir2
+
+cscript //nologo "%VBS_FILE%"
+if errorlevel 1 (
+    echo        [WARN] Could not remove shortcuts automatically.
+    echo               Delete Desktop\stoneChat.lnk manually if it remains.
+) else (
+    echo        Shortcuts removed.
+)
+del "%VBS_FILE%" >nul 2>&1
+
+:: ------------------------------------------------------------
+:: 3. Remove install directory
+:: ------------------------------------------------------------
+echo.
+echo [ 3/3] Removing install folder...
+echo        %REMOVE_PATH%
+
+if exist "%REMOVE_PATH%\" (
+    rd /s /q "%REMOVE_PATH%" >nul 2>&1
+    if exist "%REMOVE_PATH%\" (
+        echo        [WARN] Folder could not be fully removed.
+        echo               Close any open files or windows inside it and
+        echo               delete the folder manually.
+    ) else (
+        echo        Folder removed.
+    )
+) else (
+    echo        [WARN] Folder not found: %REMOVE_PATH%
+)
+
+echo.
+echo ============================================================
+echo   stoneChat has been uninstalled.
+echo ============================================================
+echo.
+pause
+endlocal
+exit /b 0
