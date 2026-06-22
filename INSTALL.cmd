@@ -59,8 +59,8 @@ echo   Accepted : %INSTALL_PATH%
 echo   (to change, re-run INSTALL.cmd and type a different path)
 echo.
 
-echo("%INSTALL_PATH%" | find "!" >nul
-if not errorlevel 1 (
+set "TEST_INSTALL_PATH=%INSTALL_PATH:!=%"
+if not "%INSTALL_PATH%"=="%TEST_INSTALL_PATH%" (
     echo.
     echo [FAIL] Install path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely use paths containing !.
@@ -81,8 +81,8 @@ if exist "%~dp0CONF.ini" (
         )
     )
 )
-echo("%STUNNEL_PATH%" | find "!" >nul
-if not errorlevel 1 (
+set "TEST_STUNNEL_PATH=%STUNNEL_PATH:!=%"
+if not "%STUNNEL_PATH%"=="%TEST_STUNNEL_PATH%" (
     echo.
     echo [FAIL] Stunnel path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely use that path.
@@ -131,7 +131,7 @@ php -v >nul 2>&1
 if errorlevel 1 (
     echo        [FAIL] PHP not found in PATH.
     echo               Please install PHP 5.4 or later and add php.exe to PATH.
-    echo               (5.4+ is required for the built-in web server "php -S")
+    echo               ^(5.4+ is required for the built-in web server "php -S"^)
     echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip from archives
     echo               Download   : https://windows.php.net/downloads/releases/archives/
     set /a "ERR_COUNT+=1"
@@ -140,7 +140,7 @@ if errorlevel 1 (
     php -r "exit(version_compare(PHP_VERSION, '5.4.0', '>=') ? 0 : 1);" >nul 2>&1
     if errorlevel 1 (
         echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.4 or later.
-        echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip (last XP-compatible release)
+        echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip ^(last XP-compatible release^)
         echo               Download   : https://windows.php.net/downloads/releases/archives/
         set /a "ERR_COUNT+=1"
     ) else (
@@ -291,8 +291,8 @@ if !ERR_COUNT! GTR 0 (
     echo  Suggested order of steps:
     if "!PHP_OK!"=="0" (
         echo  [Step A] Install PHP 5.4+ and add php.exe to PATH.
-        echo          (5.4+ is required for the built-in web server "php -S")
-        echo          Windows XP    : php-5.4.45-Win32-VC9-x86.zip (last XP-compatible release)
+        echo           ^(5.4+ is required for the built-in web server "php -S"^)
+        echo          Windows XP    : php-5.4.45-Win32-VC9-x86.zip ^(last XP-compatible release^)
         echo          Windows 10/11 : https://windows.php.net/download/
         echo          Archives      : https://windows.php.net/downloads/releases/archives/
     )
