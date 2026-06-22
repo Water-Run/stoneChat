@@ -88,6 +88,9 @@ if (!function_exists('sc_parse_url_target')) {
  *   Resolve a relative path against a base directory. */
 if (!function_exists('sc_resolve_path')) {
     function sc_resolve_path($path, $base_dir) {
+        if (function_exists('sc_validate_path_resolve')) {
+            return sc_validate_path_resolve($path, $base_dir);
+        }
         if (!is_string($path) || $path === '') {
             return '';
         }
@@ -109,8 +112,8 @@ if (!function_exists('sc_resolve_path')) {
  *   Absolute path where the generated stunnel.conf is written. */
 if (!function_exists('sc_stunnel_conf_path')) {
     function sc_stunnel_conf_path($modern_dir) {
-        return rtrim($modern_dir, '/\\') . DIRECTORY_SEPARATOR
-             . 'stunnel.conf';
+        $p = rtrim($modern_dir, '/\\') . DIRECTORY_SEPARATOR . 'stunnel.conf';
+        return function_exists('sc_validate_path_resolve') ? sc_validate_path_resolve($p, '') : $p;
     }
 }
 
@@ -118,8 +121,8 @@ if (!function_exists('sc_stunnel_conf_path')) {
  *   Absolute path where stunnel writes its PID file. */
 if (!function_exists('sc_stunnel_pid_path')) {
     function sc_stunnel_pid_path($modern_dir) {
-        return rtrim($modern_dir, '/\\') . DIRECTORY_SEPARATOR
-             . 'stunnel.pid';
+        $p = rtrim($modern_dir, '/\\') . DIRECTORY_SEPARATOR . 'stunnel.pid';
+        return function_exists('sc_validate_path_resolve') ? sc_validate_path_resolve($p, '') : $p;
     }
 }
 
