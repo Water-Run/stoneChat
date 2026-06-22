@@ -3,6 +3,10 @@ stoneChat (a caveman peeking at modern technology) is a simple LLM Web Chat, ada
 To run it, your device needs a PHP 5.4+ environment (the launcher uses PHP's built-in web server). Get it from:
 https://windows.php.net/downloads/releases/archives/
 
+On Windows XP: use php-5.4.45-Win32-VC9-x86.zip -- PHP 5.4 is the last version
+to support XP and the first to include the built-in web server. PHP 5.5+ requires
+Vista or later. The app code itself is written to run on any PHP 5.x.
+
 As for all the remaining network-related problems, let the program handle them. You will also need stunnel for HTTPS:
 https://www.stunnel.org/downloads.html
 
