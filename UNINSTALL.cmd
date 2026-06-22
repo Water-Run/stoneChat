@@ -83,8 +83,8 @@ echo     %REMOVE_PATH%
 echo.
 
 :: Guard: remove path must not contain !
-echo("%REMOVE_PATH%" | find "!" >nul
-if not errorlevel 1 (
+set "REMOVE_TEST=%REMOVE_PATH:!=%"
+if not "%REMOVE_PATH%"=="%REMOVE_TEST%" (
     echo [FAIL] Install path contains an exclamation mark ^(!^).
     echo        Cannot remove safely. Delete the folder manually:
     echo          %REMOVE_PATH%

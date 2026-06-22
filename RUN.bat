@@ -11,8 +11,8 @@ setlocal DisableDelayedExpansion
 cd /d "%~dp0"
 
 set "SC_SOURCE_PATH=%CD%"
-echo("%SC_SOURCE_PATH%" | find "!" >nul
-if not errorlevel 1 (
+set "SC_TEST_PATH=%SC_SOURCE_PATH:!=%"
+if not "%SC_SOURCE_PATH%"=="%SC_TEST_PATH%" (
     echo.
     echo [FAIL] Current stoneChat path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely run from this path.
@@ -33,8 +33,8 @@ if exist "%~dp0CONF.ini" (
         )
     )
 )
-echo("%STUNNEL_PATH%" | find "!" >nul
-if not errorlevel 1 (
+set "STUNNEL_TEST_PATH=%STUNNEL_PATH:!=%"
+if not "%STUNNEL_PATH%"=="%STUNNEL_TEST_PATH%" (
     echo.
     echo [FAIL] Stunnel path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely use that path.
