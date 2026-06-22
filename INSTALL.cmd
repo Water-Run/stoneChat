@@ -125,14 +125,17 @@ php -v >nul 2>&1
 if errorlevel 1 (
     echo        [FAIL] PHP not found in PATH.
     echo               Please install PHP 5.4 or later and add php.exe to PATH.
-    echo               Download: https://windows.php.net/downloads/releases/archives/
+    echo               (5.4+ is required for the built-in web server "php -S")
+    echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip from archives
+    echo               Download   : https://windows.php.net/downloads/releases/archives/
     set /a "ERR_COUNT+=1"
 ) else (
     for /f "delims=" %%v in ('php -r "echo PHP_VERSION;" 2^>nul') do set "PHPVER=%%v"
     php -r "exit(version_compare(PHP_VERSION, '5.4.0', '>=') ? 0 : 1);" >nul 2>&1
     if errorlevel 1 (
         echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.4 or later.
-        echo               Download: https://windows.php.net/downloads/releases/archives/
+        echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip (last XP-compatible release)
+        echo               Download   : https://windows.php.net/downloads/releases/archives/
         set /a "ERR_COUNT+=1"
     ) else (
         echo        [ OK ] PHP !PHPVER! found.
@@ -277,11 +280,10 @@ if !ERR_COUNT! GTR 0 (
     echo  Suggested order of steps:
     if "!PHP_OK!"=="0" (
         echo  [Step A] Install PHP 5.4+ and add php.exe to PATH.
-        echo          (5.4+ required for the built-in web server "php -S";
-        echo           the app code itself is PHP 5.2 compatible)
+        echo          (5.4+ is required for the built-in web server "php -S")
+        echo          Windows XP    : php-5.4.45-Win32-VC9-x86.zip (last XP-compatible release)
         echo          Windows 10/11 : https://windows.php.net/download/
-        echo          Windows XP    : https://windows.php.net/downloads/releases/archives/
-        echo          (pick the latest php-5.4.x-Win32 package for XP)
+        echo          Archives      : https://windows.php.net/downloads/releases/archives/
     )
     echo  [Step B] After fixing, re-run INSTALL.cmd.
     echo.

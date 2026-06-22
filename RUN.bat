@@ -71,14 +71,17 @@ php -v >nul 2>&1
 if errorlevel 1 (
     echo        [FAIL] PHP not found in PATH.
     echo               Install PHP 5.4+ and add php.exe to PATH.
-    echo               Download: https://windows.php.net/downloads/releases/archives/
+    echo               (5.4+ is required for the built-in web server "php -S")
+    echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip from archives
+    echo               Download   : https://windows.php.net/downloads/releases/archives/
     set /a "ERR_COUNT+=1"
 ) else (
     for /f "delims=" %%v in ('php -r "echo PHP_VERSION;" 2^>nul') do set "PHPVER=%%v"
     php -r "exit(version_compare(PHP_VERSION, '5.4.0', '>=') ? 0 : 1);" >nul 2>&1
     if errorlevel 1 (
         echo        [FAIL] PHP version too old. Found !PHPVER!, need 5.4 or later.
-        echo               Download: https://windows.php.net/downloads/releases/archives/
+        echo               Windows XP : php-5.4.45-Win32-VC9-x86.zip (last XP-compatible release)
+        echo               Download   : https://windows.php.net/downloads/releases/archives/
         set /a "ERR_COUNT+=1"
     ) else (
         echo        [ OK ] PHP !PHPVER! found.

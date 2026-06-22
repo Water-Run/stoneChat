@@ -36,7 +36,10 @@ if (!defined('PHP_SAPI') || (PHP_SAPI !== 'cli' && PHP_SAPI !== 'cli-server')) {
     exit(1);
 }
 
-/* Guard 2: require PHP 5.4 or newer (RUN.bat uses php -S). */
+/* Guard 2: require PHP 5.4 or newer.
+ * RUN.bat uses 'php -S' (built-in web server, added in 5.4).
+ * On Windows XP the correct package is php-5.4.45-Win32-VC9-x86.zip
+ * (the last PHP release to support XP; 5.5+ requires Vista or later). */
 if (!defined('PHP_VERSION')
     || !function_exists('version_compare')
     || !version_compare(PHP_VERSION, '5.4.0', '>=')) {
