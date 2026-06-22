@@ -286,25 +286,27 @@ if (!function_exists('sc_stunnel_stop')) {
 }
 
 /* sc_stunnel_start($stunnel_exe, $conf_path, $pid_path)
- *   Launch stunnel with the given config file. */
+ *   Start the stunnel binary in the background and wait for it. */
 if (!function_exists('sc_stunnel_start')) {
     function sc_stunnel_start($stunnel_exe, $conf_path, $pid_path) {
         if (!is_file($stunnel_exe)) {
             return false;
         }
-        if (!is_file($conf_path)) {
-            return false;
-        }
-        /* quote paths for Windows safety (spaces in "Program Files"). */
         $cmd = '"' . $stunnel_exe . '" "' . $conf_path . '"';
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            /* On Windows, prefer tstunnel.exe (command line) over stunnel.exe (GUI) */
+            $bin_dir = dirname($stunnel_exe);
+            $tstunnel = $bin_dir . DIRECTORY_SEPARATOR . 'tstunnel.exe';
+            if (is_file($tstunnel)) {
+                $cmd = '"' . $tstunnel . '" "' . $conf_path . '"';
+            }
             /* start detached: use "start /B" via cmd /c. */
             $cmd = 'cmd /c start /B "" ' . $cmd;
             @exec($cmd);
         } else {
             @exec($cmd . ' >/dev/null 2>&1 &');
         }
-        /* wait up to ~3 seconds for the PID file to appear. */
+        /* wait up to ~3 seconds for the proxy port to open. */
         for ($i = 0; $i < 30; $i++) {
             usleep(100000);
             if (sc_stunnel_is_running($pid_path) !== false) {
