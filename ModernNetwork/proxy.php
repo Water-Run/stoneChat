@@ -177,10 +177,10 @@ if (!function_exists('sc_generate_stunnel_conf')) {
               . "client = yes\n"
               . "pid = " . $pid_path . "\n"
               . "output = " . $log_path . "\n"
-              . "CAfile = " . $ca_cert . "\n"
-              . "verify = 2\n"
               . "\n"
               . "[api-tunnel]\n"
+              . "CAfile = " . $ca_cert . "\n"
+              . "verify = 2\n"
               . "accept = 127.0.0.1:" . (int)$local_port . "\n"
               . "connect = " . $remote_host . ":" . (int)$remote_port . "\n";
         $bytes = @file_put_contents($conf_path, $body);
