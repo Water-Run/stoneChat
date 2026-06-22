@@ -337,8 +337,8 @@ if exist "%INSTALL_PATH%\CONF.ini" (
     if exist "%~dp0CONF.ini" (
         copy /Y "%~dp0CONF.ini" "%INSTALL_PATH%\" >nul
         if errorlevel 1 goto :copy_failed
-    ) else if exist "%~dp0CONF.example.ini" (
-        copy /Y "%~dp0CONF.example.ini" "%INSTALL_PATH%\CONF.ini" >nul
+    ) else if exist "%~dp0CONF_SMP.INI" (
+        copy /Y "%~dp0CONF_SMP.INI" "%INSTALL_PATH%\CONF.ini" >nul
         if errorlevel 1 goto :copy_failed
     )
 )

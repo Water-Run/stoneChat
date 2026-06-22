@@ -94,15 +94,15 @@ if errorlevel 1 (
 :: ------------------------------------------------------------
 echo [ 2/7] CONF.ini present and valid...
 if not exist "%~dp0CONF.ini" (
-    if exist "%~dp0CONF.example.ini" (
-        copy /Y "%~dp0CONF.example.ini" "%~dp0CONF.ini" >nul
-        echo        [INFO] Created CONF.ini from CONF.example.ini template.
+    if exist "%~dp0CONF_SMP.INI" (
+        copy /Y "%~dp0CONF_SMP.INI" "%~dp0CONF.ini" >nul
+        echo        [INFO] Created CONF.ini from CONF_SMP.INI template.
     )
 )
 
 if not exist "%~dp0CONF.ini" (
-    echo        [FAIL] CONF.ini not found, and no CONF.example.ini template available.
-    echo               Please restore CONF.example.ini or create CONF.ini.
+    echo        [FAIL] CONF.ini not found, and no CONF_SMP.INI template available.
+    echo               Please restore CONF_SMP.INI or create CONF.ini.
     set /a "ERR_COUNT+=1"
 ) else (
     if "!PHP_OK!"=="1" (
