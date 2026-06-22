@@ -106,8 +106,7 @@ if not exist "%~dp0CONF.ini" (
             set /a "ERR_COUNT+=1"
         )
     ) else (
-        echo        [SKIP] Skipped ^(PHP not available^).
-        set /a "ERR_COUNT+=1"
+        echo        [SKIP] Skipped ^(PHP not available -- fix item 1 first^).
     )
 )
 
@@ -214,6 +213,21 @@ if !ERR_COUNT! GTR 0 (
     echo   stoneChat startup check FAILED: !ERR_COUNT! error^(s^).
     echo   Please fix the issues above and re-run RUN.bat.
     echo ============================================================
+    echo.
+    echo   Suggested order of steps:
+    if "!PHP_OK!"=="0" (
+        echo   [Step A] Install PHP 5.4+ and add php.exe to PATH.
+        echo           Download: https://windows.php.net/downloads/releases/archives/
+    )
+    if "!STUNNEL_OK!"=="0" (
+        echo   [Step B] Install stunnel and set [paths] stunnel in CONF.ini.
+        echo           Download: https://www.stunnel.org/downloads.html
+    )
+    if "!CONF_OK!"=="0" if "!PHP_OK!"=="1" (
+        echo   [Step C] Edit CONF.ini: set a real password and API keys.
+    )
+    echo.
+    echo   After fixing, re-run RUN.bat.
     echo.
     pause
     endlocal

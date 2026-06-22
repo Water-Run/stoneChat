@@ -274,6 +274,13 @@ if !ERR_COUNT! GTR 0 (
     echo  Please fix the above issues and re-run INSTALL.cmd.
     echo ============================================================
     echo.
+    echo  Suggested order of steps:
+    if "!PHP_OK!"=="0" (
+        echo  [Step A] Install PHP 5.4+ and add php.exe to PATH.
+        echo          Download: https://windows.php.net/downloads/releases/archives/
+    )
+    echo  [Step B] After fixing, re-run INSTALL.cmd.
+    echo.
     pause
     endlocal
     endlocal
