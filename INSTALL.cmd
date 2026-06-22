@@ -46,6 +46,8 @@ set "INSTALL_PATH="
 if not "%~1"=="" (
     set "INSTALL_PATH=%~1"
 ) else (
+    echo Press any key to begin setup...
+    pause >nul
     set /p "INSTALL_PATH=Install path [%DEFAULT_INSTALL_PATH%]: "
 )
 if "%INSTALL_PATH%"=="" set "INSTALL_PATH=%DEFAULT_INSTALL_PATH%"
