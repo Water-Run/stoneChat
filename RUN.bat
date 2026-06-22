@@ -136,11 +136,31 @@ if "!CONF_OK!"=="1" (
         )
     )
 )
-netstat -ano | findstr /R /C:"LISTENING" | findstr /C:":!SC_PORT! " >nul 2>&1
-if not errorlevel 1 (
-    echo        [FAIL] Port !SC_PORT! is already in use by another LISTENING process.
-    echo               Stop the conflicting process or change [server] port in CONF.ini.
-    set /a "ERR_COUNT+=1"
+
+:PORT_CHECK_LOOP
+set "CONFLICT_PID="
+if not exist "%~dp0.tmp" mkdir "%~dp0.tmp"
+netstat -ano > "%~dp0.tmp\netstat.tmp"
+findstr /C:"LISTENING" "%~dp0.tmp\netstat.tmp" > "%~dp0.tmp\netstat_list.tmp"
+findstr /C:":!SC_PORT! " "%~dp0.tmp\netstat_list.tmp" > "%~dp0.tmp\netstat_match.tmp"
+for /f "tokens=5" %%P in ('type "%~dp0.tmp\netstat_match.tmp" 2^>nul') do (
+    set "CONFLICT_PID=%%P"
+)
+del /q "%~dp0.tmp\netstat.tmp" "%~dp0.tmp\netstat_list.tmp" "%~dp0.tmp\netstat_match.tmp" 2>nul
+
+if not "!CONFLICT_PID!"=="" (
+    echo        [WARN] Port !SC_PORT! is already in use by process PID: !CONFLICT_PID!
+    set /p "KILL_CHOICE=       Do you want to automatically kill this process? (y/n): "
+    if /i "!KILL_CHOICE!"=="y" (
+        echo        [INFO] Attempting to kill PID !CONFLICT_PID!...
+        taskkill /F /PID !CONFLICT_PID! >nul 2>&1
+        :: Wait a moment for the port to be freed
+        ping 127.0.0.1 -n 2 >nul
+        goto :PORT_CHECK_LOOP
+    ) else (
+        echo        [FAIL] Port !SC_PORT! is in use and was not killed.
+        set /a "ERR_COUNT+=1"
+    )
 ) else (
     echo        [ OK ] Port !SC_PORT! is free.
     set "PORT_OK=1"
