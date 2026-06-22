@@ -23,4 +23,7 @@ return array(
     'error.network' => 'Netzwerkfehler',
     'error.timeout' => 'Zeitüberschreitung',
     'error.unauthorized' => 'Nicht autorisiert',
+    'role.user' => 'Sie',
+    'role.assistant' => 'KI',
+    'role.system' => 'System',
 );

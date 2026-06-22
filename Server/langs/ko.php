@@ -23,4 +23,7 @@ return array(
     'error.network' => '네트워크 오류',
     'error.timeout' => '요청 시간 초과',
     'error.unauthorized' => '인증 실패',
+    'role.user' => '나',
+    'role.assistant' => 'AI',
+    'role.system' => '시스템',
 );

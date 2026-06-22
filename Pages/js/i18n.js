@@ -73,7 +73,10 @@
     'common.close': 'Close',
     'error.network': 'Network error',
     'error.timeout': 'Request timeout',
-    'error.unauthorized': 'Unauthorized'
+    'error.unauthorized': 'Unauthorized',
+    'role.user': 'You',
+    'role.assistant': 'AI',
+    'role.system': 'System'
   };
 
   /* ----- Bundled translations (front-end fallback, no backend injection) ----- */
@@ -101,7 +104,10 @@
         "common.close": "关闭",
         "error.network": "网络错误",
         "error.timeout": "请求超时",
-        "error.unauthorized": "未授权"
+        "error.unauthorized": "未授权",
+        "role.user": "你",
+        "role.assistant": "AI",
+        "role.system": "系统"
     },
     "zh-TW": {
         "app.title": "stoneChat",
@@ -126,7 +132,10 @@
         "common.close": "關閉",
         "error.network": "網絡錯誤",
         "error.timeout": "請求超時",
-        "error.unauthorized": "未授權"
+        "error.unauthorized": "未授權",
+        "role.user": "你",
+        "role.assistant": "AI",
+        "role.system": "系統"
     },
     "en": {
         "app.title": "stoneChat",
@@ -151,7 +160,10 @@
         "common.close": "Close",
         "error.network": "Network error",
         "error.timeout": "Request timeout",
-        "error.unauthorized": "Unauthorized"
+        "error.unauthorized": "Unauthorized",
+        "role.user": "You",
+        "role.assistant": "AI",
+        "role.system": "System"
     },
     "ja": {
         "app.title": "stoneChat",
@@ -176,7 +188,10 @@
         "common.close": "閉じる",
         "error.network": "ネットワークエラー",
         "error.timeout": "リクエストタイムアウト",
-        "error.unauthorized": "認証エラー"
+        "error.unauthorized": "認証エラー",
+        "role.user": "あなた",
+        "role.assistant": "AI",
+        "role.system": "システム"
     },
     "ko": {
         "app.title": "stoneChat",
@@ -201,7 +216,10 @@
         "common.close": "닫기",
         "error.network": "네트워크 오류",
         "error.timeout": "요청 시간 초과",
-        "error.unauthorized": "인증 실패"
+        "error.unauthorized": "인증 실패",
+        "role.user": "나",
+        "role.assistant": "AI",
+        "role.system": "시스템"
     },
     "ru": {
         "app.title": "stoneChat",
@@ -226,7 +244,10 @@
         "common.close": "Закрыть",
         "error.network": "Сетевая ошибка",
         "error.timeout": "Время истекло",
-        "error.unauthorized": "Не авторизован"
+        "error.unauthorized": "Не авторизован",
+        "role.user": "Вы",
+        "role.assistant": "ИИ",
+        "role.system": "Система"
     },
     "fr": {
         "app.title": "stoneChat",
@@ -251,7 +272,10 @@
         "common.close": "Fermer",
         "error.network": "Erreur réseau",
         "error.timeout": "Délai dépassé",
-        "error.unauthorized": "Non autorisé"
+        "error.unauthorized": "Non autorisé",
+        "role.user": "Vous",
+        "role.assistant": "IA",
+        "role.system": "Système"
     },
     "de": {
         "app.title": "stoneChat",
@@ -276,7 +300,10 @@
         "common.close": "Schließen",
         "error.network": "Netzwerkfehler",
         "error.timeout": "Zeitüberschreitung",
-        "error.unauthorized": "Nicht autorisiert"
+        "error.unauthorized": "Nicht autorisiert",
+        "role.user": "Sie",
+        "role.assistant": "KI",
+        "role.system": "System"
     }
 };
 

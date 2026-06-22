@@ -23,4 +23,7 @@ return array(
     'error.network' => '网络错误',
     'error.timeout' => '请求超时',
     'error.unauthorized' => '未授权',
+    'role.user' => '你',
+    'role.assistant' => 'AI',
+    'role.system' => '系统',
 );

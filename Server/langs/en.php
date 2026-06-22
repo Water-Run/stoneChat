@@ -23,4 +23,7 @@ return array(
     'error.network' => 'Network error',
     'error.timeout' => 'Request timeout',
     'error.unauthorized' => 'Unauthorized',
+    'role.user' => 'You',
+    'role.assistant' => 'AI',
+    'role.system' => 'System',
 );

@@ -23,4 +23,7 @@ return array(
     'error.network' => 'Erreur réseau',
     'error.timeout' => 'Délai dépassé',
     'error.unauthorized' => 'Non autorisé',
+    'role.user' => 'Vous',
+    'role.assistant' => 'IA',
+    'role.system' => 'Système',
 );

@@ -23,4 +23,7 @@ return array(
     'error.network' => 'ネットワークエラー',
     'error.timeout' => 'リクエストタイムアウト',
     'error.unauthorized' => '認証エラー',
+    'role.user' => 'あなた',
+    'role.assistant' => 'AI',
+    'role.system' => 'システム',
 );

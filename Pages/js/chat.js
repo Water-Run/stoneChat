@@ -185,9 +185,10 @@
         if (!container) { return null; }
         var safeRole = (role === 'user' || role === 'assistant'
                         || role === 'system') ? role : 'assistant';
-        var labels = (state.config && state.config.labels) || SC_ROLE_LABELS;
-        var roleText = labels[safeRole] || SC_ROLE_LABELS_EN[safeRole]
-            || safeRole;
+        var fallbackLabels = (state.config && state.config.labels) || SC_ROLE_LABELS;
+        var roleFallback = fallbackLabels[safeRole] || SC_ROLE_LABELS_EN[safeRole] || safeRole;
+        var roleText = window.SC.I18n.t('role.' + safeRole);
+        if (roleText === 'role.' + safeRole) { roleText = roleFallback; }
         var ts = timestamp ? sc_formatTimestamp(timestamp)
                  : sc_formatTimestamp(new Date());
         var wrapper = sc_makeEl('div', 'msg ' + safeRole + '-message');

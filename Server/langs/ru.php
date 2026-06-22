@@ -23,4 +23,7 @@ return array(
     'error.network' => 'Сетевая ошибка',
     'error.timeout' => 'Время истекло',
     'error.unauthorized' => 'Не авторизован',
+    'role.user' => 'Вы',
+    'role.assistant' => 'ИИ',
+    'role.system' => 'Система',
 );
