@@ -7,7 +7,7 @@
 
 setlocal DisableDelayedExpansion
 
-chcp 65001 >nul
+
 cd /d "%~dp0"
 
 set "SC_SOURCE_PATH=%CD%"

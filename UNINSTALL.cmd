@@ -8,7 +8,7 @@
 
 setlocal DisableDelayedExpansion
 
-chcp 65001 >nul
+
 
 :: ------------------------------------------------------------
 :: Capture script directory BEFORE any cd call.
