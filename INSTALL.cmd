@@ -277,7 +277,11 @@ if !ERR_COUNT! GTR 0 (
     echo  Suggested order of steps:
     if "!PHP_OK!"=="0" (
         echo  [Step A] Install PHP 5.4+ and add php.exe to PATH.
-        echo          Download: https://windows.php.net/downloads/releases/archives/
+        echo          (5.4+ required for the built-in web server "php -S";
+        echo           the app code itself is PHP 5.2 compatible)
+        echo          Windows 10/11 : https://windows.php.net/download/
+        echo          Windows XP    : https://windows.php.net/downloads/releases/archives/
+        echo          (pick the latest php-5.4.x-Win32 package for XP)
     )
     echo  [Step B] After fixing, re-run INSTALL.cmd.
     echo.
