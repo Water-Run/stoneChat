@@ -6,8 +6,8 @@
  * with function_exists for include-twice safety):
  *
  *   sc_load_config($path)              parse CONF.ini; empty on failure
- *   sc_load_providers($path)           [Provider N] -> normalized list
- *   sc_provider_section_name($name)    is the section a "Provider N"?
+ *   sc_load_providers($path)           [Model NAME] -> normalized list
+ *   sc_model_section_name($name)       extract NAME from [Model NAME]
  *   sc_is_placeholder_password($pw)    is the password an unfilled stub?
  *   sc_validate_path_resolve($p, $b)   resolve a path under a base
  *   sc_validate_config($cfg)           check keys; error code list
@@ -41,8 +41,22 @@ if (!function_exists('sc_load_config')) {
     }
 }
 
+/* sc_model_section_name($name)
+ *   Return the NAME part from a [Model NAME] section, or ''. */
+if (!function_exists('sc_model_section_name')) {
+    function sc_model_section_name($name) {
+        if (!is_string($name)) {
+            return '';
+        }
+        if (preg_match('/^Model[ \t]+(.+)$/i', $name, $m)) {
+            return trim((string)$m[1]);
+        }
+        return '';
+    }
+}
+
 /* sc_provider_section_name($name)
- *   Does the section name follow the "Provider N" convention? */
+ *   Old configs used [Provider N]. New configs must not. */
 if (!function_exists('sc_provider_section_name')) {
     function sc_provider_section_name($name) {
         if (!is_string($name)) {
@@ -53,7 +67,7 @@ if (!function_exists('sc_provider_section_name')) {
 }
 
 /* sc_ini_raw_value($value)
- *   Minimal raw INI value cleanup for provider scalar overrides. */
+ *   Minimal raw INI value cleanup for model scalar overrides. */
 if (!function_exists('sc_ini_raw_value')) {
     function sc_ini_raw_value($value) {
         $text = trim((string)$value);
@@ -78,11 +92,11 @@ if (!function_exists('sc_ini_raw_value')) {
     }
 }
 
-/* sc_load_provider_raw_scalars($ini_path)
+/* sc_load_model_raw_scalars($ini_path)
  *   parse_ini_file() turns false/no/off into empty strings in PHP 5.x.
- *   Read only provider stream/max_tokens/timeout as raw text. */
-if (!function_exists('sc_load_provider_raw_scalars')) {
-    function sc_load_provider_raw_scalars($ini_path) {
+ *   Read only model stream/max_tokens/timeout as raw text. */
+if (!function_exists('sc_load_model_raw_scalars')) {
+    function sc_load_model_raw_scalars($ini_path) {
         if (!is_string($ini_path) || !is_file($ini_path)
             || !is_readable($ini_path)) {
             return array();
@@ -92,25 +106,25 @@ if (!function_exists('sc_load_provider_raw_scalars')) {
             return array();
         }
         $out = array();
-        $current = 0;
+        $current = '';
         foreach ($lines as $line) {
             $t = trim((string)$line);
             if ($t === '' || substr($t, 0, 1) === ';'
                 || substr($t, 0, 1) === '#') {
                 continue;
             }
-            if (preg_match('/^\[\s*Provider\s+(\d+)\s*\]$/i', $t, $m)) {
-                $current = (int)$m[1];
+            if (preg_match('/^\[\s*Model[ \t]+(.+?)\s*\]$/i', $t, $m)) {
+                $current = trim((string)$m[1]);
                 if (!isset($out[$current])) {
                     $out[$current] = array();
                 }
                 continue;
             }
             if (substr($t, 0, 1) === '[') {
-                $current = 0;
+                $current = '';
                 continue;
             }
-            if ($current <= 0) {
+            if ($current === '') {
                 continue;
             }
             if (!preg_match('/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/',
@@ -128,11 +142,19 @@ if (!function_exists('sc_load_provider_raw_scalars')) {
     }
 }
 
+/* sc_load_provider_raw_scalars($ini_path)
+ *   Compatibility wrapper for older includes. */
+if (!function_exists('sc_load_provider_raw_scalars')) {
+    function sc_load_provider_raw_scalars($ini_path) {
+        return sc_load_model_raw_scalars($ini_path);
+    }
+}
+
 /* sc_load_providers($ini_path)
- *   Read [Provider N] sections from CONF.ini as a normalized list.
+ *   Read [Model NAME] sections from CONF.ini as a normalized list.
  *
- *   Each provider is array(
- *     'id'       => string, // display id
+ *   Each model is array(
+ *     'id'       => string, // permission/config name
  *     'label'    => string, // display name
  *     'type'     => string, // 'openai' or 'anthropic'
  *     'api_base' => string,
@@ -143,34 +165,20 @@ if (!function_exists('sc_load_provider_raw_scalars')) {
  *     'timeout'  => string, // optional raw scalar
  *   )
  *
- *   Returned in numeric order (Provider 1, 2, ...). Sections with
- *   non-array bodies are skipped. */
+ *   Returned in file order. Inactive sections are skipped. */
 if (!function_exists('sc_load_providers')) {
     function sc_load_providers($ini_path) {
         $cfg = sc_load_config($ini_path);
         if (!is_array($cfg) || empty($cfg)) {
             return array();
         }
-        $buckets = array();
-        foreach ($cfg as $section_name => $section_data) {
-            if (!sc_provider_section_name($section_name)) {
-                continue;
-            }
-            if (!is_array($section_data)) {
-                continue;
-            }
-            if (!preg_match('/^Provider\s+(\d+)$/i', $section_name, $m)) {
-                continue;
-            }
-            $buckets[(int)$m[1]] = $section_data;
-        }
-        if (empty($buckets)) {
-            return array();
-        }
-        ksort($buckets, SORT_NUMERIC);
-        $raw_scalars = sc_load_provider_raw_scalars($ini_path);
+        $raw_scalars = sc_load_model_raw_scalars($ini_path);
         $providers = array();
-        foreach ($buckets as $provider_no => $section_data) {
+        foreach ($cfg as $section_name => $section_data) {
+            $model_name = sc_model_section_name($section_name);
+            if ($model_name === '' || !is_array($section_data)) {
+                continue;
+            }
             $active_text = isset($section_data['active'])
                            ? strtolower(trim((string)$section_data['active']))
                            : '1';
@@ -179,9 +187,9 @@ if (!function_exists('sc_load_providers')) {
                 || $active_text === 'off') {
                 continue;
             }
-            $raw = isset($raw_scalars[$provider_no])
-                   && is_array($raw_scalars[$provider_no])
-                   ? $raw_scalars[$provider_no] : array();
+            $raw = isset($raw_scalars[$model_name])
+                   && is_array($raw_scalars[$model_name])
+                   ? $raw_scalars[$model_name] : array();
             $stream = isset($raw['stream'])
                       ? (string)$raw['stream']
                       : (isset($section_data['stream'])
@@ -195,14 +203,11 @@ if (!function_exists('sc_load_providers')) {
                        : (isset($section_data['timeout'])
                           ? (string)$section_data['timeout'] : '');
             $providers[] = array(
-                'id'       => isset($section_data['id'])
-                              ? (string)$section_data['id'] : '',
+                'id'       => $model_name,
                 'active'   => isset($section_data['active'])
                               ? (string)$section_data['active'] : '1',
-                'model_id' => isset($section_data['model_id'])
-                              ? (string)$section_data['model_id'] : '',
                 'label'    => isset($section_data['label'])
-                              ? (string)$section_data['label'] : '',
+                              ? (string)$section_data['label'] : $model_name,
                 'type'     => isset($section_data['type'])
                               ? (string)$section_data['type'] : '',
                 'api_base' => isset($section_data['api_base'])
@@ -222,7 +227,7 @@ if (!function_exists('sc_load_providers')) {
 
 /* sc_config_fatal_errors($errors)
  *   Filter sc_validate_config() output to errors that must block
- *   startup. Provider-specific problems are shown in the provider UI;
+ *   startup. Model-specific problems must be fixed before boot.
  *   stunnel/cacert paths are checked by RUN.cmd with better hints. */
 if (!function_exists('sc_config_fatal_errors')) {
     function sc_config_fatal_errors($errors) {
@@ -244,10 +249,10 @@ if (!function_exists('sc_config_fatal_errors')) {
             }
             if (preg_match('/^User .+_(active|allow_config)_invalid$/', $code)
                 || preg_match('/^User .+_allow_model_missing:/', $code)
+                || preg_match('/^User .+_allow_model_inactive:/', $code)
                 || preg_match('/^User .+_allow_models_empty$/', $code)
-                || preg_match('/^Provider [0-9]+_(active_invalid|missing_api_key|api_key_is_placeholder|invalid_type)$/', $code)
-                || preg_match('/^Provider [0-9]+_model_id_missing:/', $code)
-                || preg_match('/^Provider [0-9]+_missing_model_id$/', $code)) {
+                || preg_match('/^Model .+_(active_invalid|missing_api_base|missing_api_key|api_key_is_placeholder|invalid_type|missing_model)$/', $code)
+                || preg_match('/^Provider [0-9]+_section_not_supported$/', $code)) {
                 $fatal[] = $code;
             }
         }
@@ -350,7 +355,7 @@ if (!function_exists('sc_validate_path_resolve')) {
 }
 
 /* sc_validate_config($cfg)
- *   Check a parsed stoneChat config for required keys and provider
+ *   Check a parsed stoneChat config for required keys and model
  *   integrity. Returns an array of short error codes (empty on
  *   success); secret values are never echoed.
  *
@@ -361,8 +366,8 @@ if (!function_exists('sc_validate_path_resolve')) {
  *   Soft checks (reported but not fatal here; RUN.cmd gives some of
  *   them clearer operator hints):
  *     - [paths].stunnel / [paths].ca_cert: file exists when set
- *     - each [Provider N].api_key is non-placeholder
- *     - each [Provider N].type is one of: "openai", "anthropic" */
+ *     - each active [Model NAME].api_key is non-placeholder
+ *     - each active [Model NAME].type is "openai" or "anthropic" */
 if (!function_exists('sc_validate_config')) {
     function sc_validate_config($cfg) {
         $errors = array();
@@ -376,17 +381,25 @@ if (!function_exists('sc_validate_config')) {
         if (!$has_port) {
             $errors[] = 'missing_server_port';
         }
-        /* Model names are permission names, not API model strings. */
+        /* Model sections are complete usable units. */
         $known_models = array();
+        $active_models = array();
         foreach ($cfg as $section => $section_data) {
             if (!is_string($section) || !is_array($section_data)) {
                 continue;
             }
-            if (preg_match('/^Model[ \t]+(.+)$/i', $section, $m)) {
-                $name = trim((string)$m[1]);
-                if ($name !== '') {
-                    $known_models[$name] = true;
-                }
+            $name = sc_model_section_name($section);
+            if ($name === '') {
+                continue;
+            }
+            $known_models[$name] = true;
+            $active_text = isset($section_data['active'])
+                           ? strtolower(trim((string)$section_data['active']))
+                           : '1';
+            if (!($active_text === '0' || $active_text === ''
+                || $active_text === 'false' || $active_text === 'no'
+                || $active_text === 'off')) {
+                $active_models[$name] = true;
             }
         }
 
@@ -427,6 +440,9 @@ if (!function_exists('sc_validate_config')) {
                     }
                     if (!isset($known_models[$model_name])) {
                         $errors[] = $section . '_allow_model_missing:'
+                                  . $model_name;
+                    } elseif (!isset($active_models[$model_name])) {
+                        $errors[] = $section . '_allow_model_inactive:'
                                   . $model_name;
                     }
                 }
@@ -478,11 +494,18 @@ if (!function_exists('sc_validate_config')) {
                 }
             }
         }
-        /* Provider sections: each must declare an api_key and a
-         * supported type. */
+        /* Old provider sections are no longer accepted. */
+        foreach ($cfg as $section_name => $section_data) {
+            if (sc_provider_section_name($section_name)) {
+                $errors[] = $section_name . '_section_not_supported';
+            }
+        }
+
+        /* Model sections: each active one must declare a complete
+         * API unit. */
         $supported_types = array('openai' => true, 'anthropic' => true);
         foreach ($cfg as $section_name => $section_data) {
-            if (!sc_provider_section_name($section_name)) {
+            if (sc_model_section_name($section_name) === '') {
                 continue;
             }
             if (!is_array($section_data)) {
@@ -514,12 +537,15 @@ if (!function_exists('sc_validate_config')) {
             if ($type === '' || !isset($supported_types[$type])) {
                 $errors[] = $section_name . '_invalid_type';
             }
-            $model_id = isset($section_data['model_id'])
-                        ? trim((string)$section_data['model_id']) : '';
-            if ($model_id === '') {
-                $errors[] = $section_name . '_missing_model_id';
-            } elseif (!isset($known_models[$model_id])) {
-                $errors[] = $section_name . '_model_id_missing:' . $model_id;
+            $api_base = isset($section_data['api_base'])
+                        ? trim((string)$section_data['api_base']) : '';
+            if ($api_base === '') {
+                $errors[] = $section_name . '_missing_api_base';
+            }
+            $api_model = isset($section_data['model'])
+                         ? trim((string)$section_data['model']) : '';
+            if ($api_model === '') {
+                $errors[] = $section_name . '_missing_model';
             }
         }
         return $errors;

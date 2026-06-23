@@ -167,7 +167,7 @@
         var menu = $id('sc-top-menu');
         if (!menu) { return; }
         if (!provider) {
-            menu.innerHTML = '<span class="muted">No provider selected.</span>';
+            menu.innerHTML = '<span class="muted">No model selected.</span>';
             return;
         }
         var name = provider.display_name || provider.label || provider.id || '';
@@ -242,7 +242,7 @@
             '<p><strong>' + escHtml(title) + '</strong></p>'
           + '<p>Protocol: stoneChat v1 (HTTP+JSON, file-based HISTORY/).</p>'
           + '<p>Author: stoneChat project.</p>'
-          + '<p>A retro-styled multi-provider LLM chat client for LAN deployment.</p>'
+          + '<p>A retro-styled LLM chat client for LAN deployment.</p>'
           + '<p>GitHub: '
           +   '<a href="https://github.com/waterrun/stoneChat" '
           +     'target="_blank">github.com/waterrun/stoneChat</a></p>';
@@ -261,7 +261,7 @@
         var resp = SC.Api.getProviders();
         if (!resp || !resp.ok) {
             renderNewChatError(list,
-                'Failed to load providers: '
+                'Failed to load models: '
                 + ((resp && resp.error) ? resp.error : 'unknown'));
             showModal('sc-modal-new-chat');
             return;
@@ -269,7 +269,7 @@
         var providers = (resp.data && resp.data.providers)
                       ? resp.data.providers : [];
         if (providers.length === 0) {
-            renderNewChatError(list, 'No providers configured.');
+            renderNewChatError(list, 'No models configured.');
             showModal('sc-modal-new-chat');
             return;
         }
@@ -469,7 +469,7 @@
                 || (currentProvider && currentProvider.id)
                 || '';
         if (!pid) {
-            alert('No provider selected.');
+            alert('No model selected.');
             return;
         }
         var resp = SC.Api.connectCheck(pid);

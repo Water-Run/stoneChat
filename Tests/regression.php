@@ -130,21 +130,21 @@ sc_test_assert_equal($test, 'Admin',
                      ? $admin_ctx['username'] : '',
                      'token should preserve username');
 
-$test = 'user provider policy allows configured ids';
+$test = 'user model policy allows configured model ids';
 $provider_rows = array(
-    array('id' => 'openai', 'model_id' => 'GPT55'),
-    array('id' => 'minimax', 'model_id' => 'MiniMaxM3'),
-    array('id' => 'mock', 'model_id' => 'MockLocal'),
+    array('id' => 'GPT55'),
+    array('id' => 'MiniMaxM3'),
+    array('id' => 'MockLocal'),
 );
 $guest_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Guest');
 $admin_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Admin');
 sc_test_assert_equal($test, 1, count($guest_rows),
-                     'Guest should only see allowed providers');
-sc_test_assert_equal($test, 'openai',
+                     'Guest should only see allowed models');
+sc_test_assert_equal($test, 'GPT55',
                      isset($guest_rows[0]['id']) ? $guest_rows[0]['id'] : '',
-                     'Guest remaining provider should be GPT55/openai');
+                     'Guest remaining model should be GPT55');
 sc_test_assert_equal($test, 3, count($admin_rows),
-                     'Admin should see all providers');
+                     'Admin should see all models');
 
 $test = 'config validation catches user model mistakes';
 $bad_model_cfg = array(
@@ -155,14 +155,19 @@ $bad_model_cfg = array(
         'allow_config' => 'true',
         'allow_models' => 'MiniMaxM3,MissingModel',
     ),
-    'Model MiniMaxM3' => array('label' => 'MiniMax M3'),
-    'Provider 1' => array(
-        'id' => 'minimax',
-        'model_id' => 'MissingProviderModel',
+    'Model MiniMaxM3' => array(
+        'active' => '1',
         'type' => 'openai',
         'api_base' => 'https://api.minimaxi.com/v1',
         'api_key' => 'real-key',
         'model' => 'MiniMax-M3',
+    ),
+    'Model BadModel' => array(
+        'active' => '1',
+        'type' => 'wrong',
+        'api_base' => 'https://api.example.com/v1',
+        'api_key' => 'YOUR_BAD_KEY_HERE',
+        'model' => 'bad-model',
     ),
 );
 $bad_model_errors = sc_validate_config($bad_model_cfg);
@@ -179,12 +184,17 @@ sc_test_assert_true(
 );
 sc_test_assert_true(
     $test,
-    in_array('Provider 1_model_id_missing:MissingProviderModel',
+    in_array('Model BadModel_invalid_type', $bad_model_errors, true),
+    'active model with bad type should be reported'
+);
+sc_test_assert_true(
+    $test,
+    in_array('Model BadModel_api_key_is_placeholder',
              $bad_model_errors, true),
-    'provider model_id without a [Model NAME] should be reported'
+    'active model with placeholder key should be reported'
 );
 
-$test = 'inactive placeholder providers are ignored';
+$test = 'inactive placeholder models are ignored';
 $inactive_provider_cfg = array(
     'server' => array('port' => '9999'),
     'User Admin' => array(
@@ -193,11 +203,8 @@ $inactive_provider_cfg = array(
         'allow_config' => '1',
         'allow_models' => '*',
     ),
-    'Model GPT55' => array('label' => 'GPT-5.5'),
-    'Provider 1' => array(
-        'id' => 'openai',
+    'Model GPT55' => array(
         'active' => '0',
-        'model_id' => 'GPT55',
         'type' => 'openai',
         'api_base' => 'https://api.openai.com/v1',
         'api_key' => 'YOUR_OPENAI_API_KEY_HERE',
@@ -208,7 +215,7 @@ $inactive_errors = sc_config_fatal_errors(
     sc_validate_config($inactive_provider_cfg)
 );
 sc_test_assert_equal($test, array(), $inactive_errors,
-                     'inactive providers should not block startup');
+                     'inactive models should not block startup');
 
 $test = 'sc_validate_path_resolve preserves POSIX absolute base';
 $resolved = sc_validate_path_resolve(
@@ -300,47 +307,48 @@ sc_test_assert_equal($test, 88,
                      ? $anthropic_body['max_tokens'] : null,
                      'Anthropic body should use caller max_tokens');
 
-$test = 'provider loader preserves optional provider fields';
+$test = 'model loader preserves optional model fields';
 $providers = sc_load_providers($root . '/CONF.ini');
 $mock_provider = null;
 if (is_array($providers)) {
     foreach ($providers as $row) {
         if (is_array($row) && isset($row['id'])
-            && $row['id'] === 'mock') {
+            && $row['id'] === 'MockLocal') {
             $mock_provider = $row;
             break;
         }
     }
 }
 sc_test_assert_true($test, is_array($mock_provider),
-                    'mock provider should be present');
+                    'mock model should be present');
 if (is_array($mock_provider)) {
     sc_test_assert_true(
         $test,
         isset($mock_provider['stream'])
         && (string)$mock_provider['stream'] === 'true',
-        'mock provider stream=true should be preserved'
+        'mock model stream=true should be preserved'
     );
 }
 
 $test = 'config validation separates fatal startup errors';
 $sample_errors = array(
     'auth_user_password_is_placeholder',
-    'Provider 1_model_id_missing:NoSuchModel',
+    'User Guest_allow_model_missing:NoSuchModel',
     'paths_stunnel_missing',
-    'Provider 1_api_key_is_placeholder',
-    'Provider 2_unsupported_type',
+    'Model GPT55_api_key_is_placeholder',
+    'Model BadModel_invalid_type',
 );
 $fatal_errors = sc_config_fatal_errors($sample_errors);
 sc_test_assert_equal($test, array(
                          'auth_user_password_is_placeholder',
-                         'Provider 1_model_id_missing:NoSuchModel',
-                         'Provider 1_api_key_is_placeholder'
+                         'User Guest_allow_model_missing:NoSuchModel',
+                         'Model GPT55_api_key_is_placeholder',
+                         'Model BadModel_invalid_type'
                      ),
                      $fatal_errors,
-                     'auth/user/model/provider errors should block startup validation');
+                     'auth/user/model errors should block startup validation');
 
-$test = 'sample config documents default users and provider rights';
+$test = 'sample config documents default users and model units';
 $sample_ini = @file_get_contents($root . '/CONF_SMP.INI');
 sc_test_assert_true($test, is_string($sample_ini),
                     'CONF_SMP.INI should be readable');
@@ -362,8 +370,10 @@ if (is_string($sample_ini)) {
         strpos($sample_ini, '[Model MiniMaxM3]') !== false
         && strpos($sample_ini, '[Model GPT55]') !== false
         && strpos($sample_ini, 'allow_models =') !== false
-        && strpos($sample_ini, 'active = true') !== false,
-        'sample config should explain direct user and model rights'
+        && strpos($sample_ini, 'api_base =') !== false
+        && strpos($sample_ini, '[Provider ') === false
+        && strpos($sample_ini, 'model_id =') === false,
+        'sample config should explain direct model units'
     );
 }
 
@@ -392,13 +402,12 @@ sc_test_assert_equal($test, 9,
                      isset($norm['timeout']) ? $norm['timeout'] : null,
                      'provider timeout should override defaults');
 
-$test = 'provider loader preserves explicit stream=false from INI';
+$test = 'model loader preserves explicit stream=false from INI';
 $tmp_ini = tempnam(sys_get_temp_dir(), 'scini');
 file_put_contents(
     $tmp_ini,
     "[llm]\nstream = true\n"
-    . "[Provider 1]\n"
-    . "id = raw-false\n"
+    . "[Model RawFalse]\n"
     . "label = RawFalse\n"
     . "type = openai\n"
     . "api_base = http://127.0.0.1:11434/v1\n"
@@ -411,7 +420,7 @@ file_put_contents(
 $raw_false = sc_load_providers($tmp_ini);
 @unlink($tmp_ini);
 sc_test_assert_true($test, is_array($raw_false) && count($raw_false) === 1,
-                    'temporary provider should load');
+                    'temporary model should load');
 if (is_array($raw_false) && count($raw_false) === 1) {
     sc_test_assert_equal($test, 'false',
                          isset($raw_false[0]['stream'])

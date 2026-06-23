@@ -4,15 +4,15 @@
  *
  * Routes:
  *   GET  /api/providers
- *       List every [Provider N] from CONF.ini with a per-provider
+ *       List every active [Model NAME] from CONF.ini with a model
  *       status block. Secrets are NEVER returned in cleartext;
  *       api_key is masked to "****" (any non-empty key) or "" (empty).
  *
  *   POST /api/providers?action=test_all
- *       Ping every provider with a fixed "ping" user message. Each
+ *       Ping every model with a fixed "ping" user message. Each
  *       ping is bounded by a 3-second per-call latency budget
  *       (label only); the overall loop is hard-capped at 5 seconds
- *       and marks any provider it could not reach as "timeout".
+ *       and marks any model it could not reach as "timeout".
  *
  * Response shapes:
  *   GET:
@@ -20,7 +20,7 @@
  *       "ok": true,
  *       "providers": [
  *         {
- *           "id": "openai",
+ *           "id": "GPT55",
  *           "display_name": "OpenAI (ChatGPT)",
  *           "label": "OpenAI (ChatGPT)",
  *           "type": "openai",
@@ -133,7 +133,7 @@ if (!function_exists('sc_api_providers_check_base')) {
 }
 
 /* sc_api_providers_default_scalar($cfg, $key, $fallback)
- *   Look up a per-provider scalar override from CONF.ini. Reads
+ *   Look up a shared scalar override from CONF.ini. Reads
  *   [llm] and [ui] for shared defaults. */
 if (!function_exists('sc_api_providers_default_scalar')) {
     function sc_api_providers_default_scalar($cfg, $key, $fallback) {
@@ -177,13 +177,12 @@ if (!function_exists('sc_api_providers_bool')) {
 }
 
 /* sc_api_providers_normalize($p, $defaults)
- *   Convert a raw provider row into the GET-response shape.
+ *   Convert a raw model row into the GET-response shape.
  *   The masked api_key is the ONLY place a key value reaches the
  *   response. */
 if (!function_exists('sc_api_providers_normalize')) {
     function sc_api_providers_normalize($p, $defaults) {
         $id       = isset($p['id'])       ? (string)$p['id']       : '';
-        $model_id = isset($p['model_id']) ? (string)$p['model_id'] : '';
         $label    = isset($p['label'])    ? (string)$p['label']    : '';
         $type     = isset($p['type'])     ? (string)$p['type']     : '';
         $model    = isset($p['model'])    ? (string)$p['model']    : '';
@@ -218,7 +217,6 @@ if (!function_exists('sc_api_providers_normalize')) {
 
         return array(
             'id'           => $id,
-            'model_id'     => $model_id,
             'display_name' => $display,
             'label'        => $display,
             'type'         => $type,
@@ -239,7 +237,7 @@ if (!function_exists('sc_api_providers_normalize')) {
 }
 
 /* sc_api_providers_load_raw($ini_path)
- *   Load the configured providers from CONF.ini as raw rows. */
+ *   Load the configured models from CONF.ini as raw rows. */
 if (!function_exists('sc_api_providers_load_raw')) {
     function sc_api_providers_load_raw($ini_path) {
         if (!is_string($ini_path) || !function_exists('sc_load_providers')) {
@@ -260,7 +258,7 @@ if (!function_exists('sc_api_providers_load_raw')) {
 }
 
 /* sc_api_providers_load_all($ini_path, $cfg)
- *   Load the configured providers and return their normalised
+ *   Load the configured models and return their normalised
  *   response rows, keyed by id for cross-lookup. */
 if (!function_exists('sc_api_providers_load_all')) {
     function sc_api_providers_load_all($ini_path, $cfg) {

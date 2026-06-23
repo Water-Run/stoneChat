@@ -229,10 +229,6 @@ if (!function_exists('sc_auth_provider_model_id')) {
         if (!is_array($provider)) {
             return '';
         }
-        if (isset($provider['model_id'])
-            && trim((string)$provider['model_id']) !== '') {
-            return trim((string)$provider['model_id']);
-        }
         if (isset($provider['id']) && trim((string)$provider['id']) !== '') {
             return trim((string)$provider['id']);
         }

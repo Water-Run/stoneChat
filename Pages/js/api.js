@@ -474,7 +474,7 @@
             return sc_request('GET', 'config.php', null);
         },
 
-        // GET /Server/api/providers.php  - provider list with availability
+        // GET /Server/api/providers.php  - model list with availability
         getProviders: function () {
             return sc_request('GET', 'providers.php', null);
         },
@@ -485,7 +485,7 @@
         },
 
         // POST /Server/api/history.php action=new
-        //   providerId - id of the [Provider N] to bind to the new chat
+        //   providerId - model id to bind to the new chat
         createChat: function (providerId) {
             return sc_request('POST', 'history.php',
                               { action: 'new', provider_id: providerId });
@@ -537,8 +537,8 @@
                                onChunk, onComplete);
         },
 
-        // POST /Server/api/chat.php action=test  - probe provider reachability
-        //   providerId - id of the [Provider N] to test
+        // POST /Server/api/chat.php action=test  - probe model reachability
+        //   providerId - model id to test
         connectCheck: function (providerId) {
             return sc_request('POST', 'chat.php',
                                { action: 'test', provider_id: providerId });

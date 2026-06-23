@@ -12,7 +12,7 @@
  *                            providers     (list of {id,label,type,model})
  *                            langs         (supported language codes)
  *                            auth_enabled  (bool)
- *                          Provider api_key / api_base and
+ *                          Model api_key / api_base and
  *                          [User NAME].password are NEVER echoed back.
  *   POST reload_config   -> {ok:true, message:'reloaded'}; re-reads
  *                          CONF.ini.
@@ -39,7 +39,7 @@ if (!function_exists('sc_api_config_ini_path')) {
 }
 
 /* sc_api_config_sanitize_providers($providers)
- *   Strip every sensitive field from a provider list, keeping only
+ *   Strip every sensitive field from a model list, keeping only
  *   client-safe metadata: id, label, type, model. */
 if (!function_exists('sc_api_config_sanitize_providers')) {
     function sc_api_config_sanitize_providers($providers) {
@@ -53,8 +53,6 @@ if (!function_exists('sc_api_config_sanitize_providers')) {
             }
             $out[] = array(
                 'id'    => isset($p['id'])    ? (string)$p['id']    : '',
-                'model_id' => isset($p['model_id'])
-                              ? (string)$p['model_id'] : '',
                 'label' => isset($p['label']) ? (string)$p['label'] : '',
                 'type'  => isset($p['type'])  ? (string)$p['type']  : '',
                 'model' => isset($p['model']) ? (string)$p['model'] : '',

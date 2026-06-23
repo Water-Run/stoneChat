@@ -110,7 +110,7 @@ if not exist "%~dp0CONF.ini" (
             set "CONF_OK=1"
         ) else (
             echo        [FAIL] CONF.ini validation failed: !VALIDATE_OUT!
-            echo               Edit CONF.ini ^(server, users, models, providers^).
+            echo               Edit CONF.ini ^(server, users, models, API keys^).
             set /a "ERR_COUNT+=1"
         )
     ) else (
@@ -290,7 +290,7 @@ if !ERR_COUNT! GTR 0 (
         echo           Download: https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe
     )
     if "!CONF_OK!"=="0" if "!PHP_OK!"=="1" (
-        echo   [Step C] Edit CONF.ini: set users, models, providers, and API keys.
+        echo   [Step C] Edit CONF.ini: set users, models, and API keys.
     )
     echo.
     echo   After fixing, re-run RUN.cmd.
