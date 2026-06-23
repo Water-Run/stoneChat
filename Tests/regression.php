@@ -751,6 +751,27 @@ if (is_string($run_text)) {
     );
 }
 
+$test = 'launcher reports taskkill failures when freeing port';
+if (is_string($run_text)) {
+    sc_test_assert_true(
+        $test,
+        strpos($run_text, 'taskkill /F /T /PID') !== false,
+        'RUN.cmd should kill the whole process tree for a busy port'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($run_text, 'TASKKILL_LOG') !== false
+        && strpos($run_text, 'type "!TASKKILL_LOG!"') !== false,
+        'RUN.cmd should show taskkill output instead of hiding failures'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($run_text, 'PID 0') !== false
+        || strpos($run_text, 'PID 4') !== false,
+        'RUN.cmd should explain protected system PIDs'
+    );
+}
+
 $test = 'config template does not promise unsupported local override files';
 $conf_text = @file_get_contents($root . '/CONF.ini');
 sc_test_assert_true($test, is_string($conf_text),

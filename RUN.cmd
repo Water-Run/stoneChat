@@ -138,22 +138,52 @@ if "!CONF_OK!"=="1" (
 )
 
 :PORT_CHECK_LOOP
-set "CONFLICT_PID="
+set "CONFLICT_PIDS="
 if not exist "%~dp0.tmp" mkdir "%~dp0.tmp"
 netstat -ano > "%~dp0.tmp\netstat.tmp"
 findstr /C:"LISTENING" "%~dp0.tmp\netstat.tmp" > "%~dp0.tmp\netstat_list.tmp"
 findstr /C:":!SC_PORT! " "%~dp0.tmp\netstat_list.tmp" > "%~dp0.tmp\netstat_match.tmp"
 for /f "tokens=5" %%P in ('type "%~dp0.tmp\netstat_match.tmp" 2^>nul') do (
-    set "CONFLICT_PID=%%P"
+    echo !CONFLICT_PIDS! | findstr /C:" %%P " >nul
+    if errorlevel 1 set "CONFLICT_PIDS=!CONFLICT_PIDS! %%P "
 )
 del /q "%~dp0.tmp\netstat.tmp" "%~dp0.tmp\netstat_list.tmp" "%~dp0.tmp\netstat_match.tmp" 2>nul
 
-if not "!CONFLICT_PID!"=="" (
-    echo        [WARN] Port !SC_PORT! is already in use by process PID: !CONFLICT_PID!
+if not "!CONFLICT_PIDS!"=="" (
+    echo        [WARN] Port !SC_PORT! is already in use by PID(s):!CONFLICT_PIDS!
     set /p "KILL_CHOICE=       Do you want to automatically kill this process? (y/n): "
     if /i "!KILL_CHOICE!"=="y" (
-        echo        [INFO] Attempting to kill PID !CONFLICT_PID!...
-        taskkill /F /PID !CONFLICT_PID! >nul 2>&1
+        set "KILL_FAILED=0"
+        for %%K in (!CONFLICT_PIDS!) do (
+            if "%%K"=="0" (
+                echo        [FAIL] PID 0 owns this port. It is a protected system entry.
+                echo               Change [server] port in CONF.ini and run RUN.cmd again.
+                set "KILL_FAILED=1"
+            ) else if "%%K"=="4" (
+                echo        [FAIL] PID 4 owns this port. It is the Windows System process.
+                echo               Change [server] port in CONF.ini or free the binding as Administrator.
+                set "KILL_FAILED=1"
+            ) else (
+                echo        [INFO] Attempting to kill PID %%K...
+                set "TASKKILL_LOG=%~dp0.tmp\taskkill_%%K.tmp"
+                taskkill /F /T /PID %%K > "!TASKKILL_LOG!" 2>&1
+                if errorlevel 1 (
+                    echo        [FAIL] taskkill failed for PID %%K:
+                    type "!TASKKILL_LOG!"
+                    echo               Try running RUN.cmd as Administrator, or edit [server] port.
+                    set "KILL_FAILED=1"
+                ) else (
+                    type "!TASKKILL_LOG!" >nul
+                    echo        [ OK ] PID %%K killed.
+                )
+                del /q "!TASKKILL_LOG!" 2>nul
+            )
+        )
+        if "!KILL_FAILED!"=="1" (
+            set /a "ERR_COUNT+=1"
+            set "PORT_OK=0"
+            goto :AFTER_PORT_CHECK
+        )
         :: Wait a moment for the port to be freed
         ping 127.0.0.1 -n 2 >nul
         goto :PORT_CHECK_LOOP
@@ -165,6 +195,8 @@ if not "!CONFLICT_PID!"=="" (
     echo        [ OK ] Port !SC_PORT! is free.
     set "PORT_OK=1"
 )
+
+:AFTER_PORT_CHECK
 
 :: ------------------------------------------------------------
 :: 4. [paths] stunnel executable exists
