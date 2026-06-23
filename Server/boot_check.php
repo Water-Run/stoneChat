@@ -119,7 +119,7 @@ if (!function_exists('sc_strict_environment_check')) {
             echo "Error: stunnel.exe not found at: " . $stunnel_path
                . ". stoneChat requires stunnel for HTTPS tunnel "
                . "proxying.\n"
-               . "Download: https://www.stunnel.org/downloads.html\n";
+               . "Download: https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe\n";
             exit(1);
         }
     }

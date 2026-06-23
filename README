@@ -1,31 +1,82 @@
-stoneChat (a caveman peeking at modern technology) is a simple LLM Web Chat, adapted for Windows XP & IE6.
+stoneChat 是一个简单的 LLM Web Chat，目标环境是 Windows XP 和 IE6。
 
-To run it, your device needs a PHP 5.4+ environment (the launcher uses PHP's built-in web server). Get it from:
-https://windows.php.net/downloads/releases/archives/
+运行要求
+--------
 
-On Windows XP: use php-5.4.45-Win32-VC9-x86.zip -- PHP 5.4 is the last version
-to support XP and the first to include the built-in web server. PHP 5.5+ requires
-Vista or later. The app code itself is written to run on any PHP 5.x.
+需要 PHP 5.4。启动脚本使用 PHP 自带的 Web Server，也就是 `php -S`。
 
-As for all the remaining network-related problems, let the program handle them. You will also need stunnel for HTTPS:
-https://www.stunnel.org/downloads.html
+Windows XP 请使用这个版本：
+https://windows.php.net/downloads/releases/archives/php-5.4.45-Win32-VC9-x86.zip
 
-Download / Clone:
-  Clone the repository or download the ZIP.
-  Before starting, copy `CONF_SMP.INI` to `CONF.ini` and edit it to set
-  your users, model rights, API keys, and providers.
+还需要 stunnel。它负责在老系统上处理 HTTPS。
 
-To run directly:
-  Double-click RUN.cmd. It performs pre-flight checks and starts
-  the local web server. If CONF.ini is missing, RUN.cmd will also create
-  one from the CONF_SMP.INI template.
+Windows XP 请使用这个版本：
+https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe
 
-Then visit it in your browser. The default address is:
+准备配置
+--------
+
+复制一份配置模板：
+
+  CONF_SMP.INI -> CONF.ini
+
+然后用记事本编辑 `CONF.ini`。配置文件里面已经写了说明，按里面的注释改即可。
+
+重点要改的地方：
+
+  [User Admin]
+    管理员用户。可以控制是否允许网页编辑配置、允许哪些模型。
+
+  [User Guest]
+    普通用户。默认密码是 guestpass，请按需要修改。
+
+  [Model XXX]
+    模型权限名。用户的 allow_models 使用这里的名字。
+
+  [Provider N]
+    实际 API 配置。每个 Provider 用 model_id 指向一个 [Model XXX]。
+
+没有使用的 Provider 可以保留，但要设为：
+
+  active = 0
+
+这样启动检查不会要求它必须有真实 API key。
+
+启动
+----
+
+双击：
+
+  RUN.cmd
+
+如果 `CONF.ini` 不存在，`RUN.cmd` 会从 `CONF_SMP.INI` 复制一份。
+
+启动脚本会先检查：
+
+  PHP 是否可用
+  CONF.ini 是否合法
+  端口是否被占用
+  stunnel.exe 是否存在
+  cacert.pem 是否存在
+  HISTORY 目录是否可写
+
+检查通过后，浏览器访问：
+
   http://localhost:9999
 
-You need to edit CONF.ini according to the comments to configure users,
-models, providers, and other settings. The launcher validates CONF.ini
-before starting so common mistakes are caught early.
+注意
+----
 
-stoneChat is open-sourced under WTFPL at:
+本项目没有安装程序，也没有卸载程序。
+
+下载后直接在目录里运行 `RUN.cmd`。删除项目目录即可删除程序本体。
+
+`CONF.ini` 是主要说明文档。修改用户、模型、Provider、API key，都从这个文件开始。
+
+开源协议
+--------
+
+stoneChat 使用 WTFPL 协议。
+
+项目地址：
 https://github.com/Water-Run/stoneChat

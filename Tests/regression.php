@@ -626,8 +626,8 @@ sc_test_assert_true($test, !is_file($root . '/RUN.bat'),
                     'RUN.bat should be removed after rename');
 
 $test = 'launcher includes dependency download hints';
-$php_url = 'https://windows.php.net/downloads/releases/archives/';
-$stunnel_url = 'https://www.stunnel.org/downloads.html';
+$php_url = 'https://windows.php.net/downloads/releases/archives/php-5.4.45-Win32-VC9-x86.zip';
+$stunnel_url = 'https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe';
 $hint_files = array('RUN.cmd');
 foreach ($hint_files as $hint_file) {
     $text = @file_get_contents($root . '/' . $hint_file);
@@ -806,7 +806,7 @@ sc_test_assert_true($test, is_string($boot_check),
 if (is_string($boot_check)) {
     sc_test_assert_true(
         $test,
-        strpos($boot_check, 'https://www.stunnel.org/downloads.html') !== false,
+        strpos($boot_check, 'https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe') !== false,
         'runtime stunnel error should include the stunnel download URL'
     );
     sc_test_assert_true(
