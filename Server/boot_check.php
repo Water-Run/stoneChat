@@ -13,8 +13,15 @@
  *
  * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */
-if (function_exists('date_default_timezone_set') && function_exists('date_default_timezone_get')) {
-    @date_default_timezone_set(@date_default_timezone_get());
+if (function_exists('date_default_timezone_set')) {
+    $sc_tz = '';
+    if (function_exists('ini_get')) {
+        $sc_tz = (string)@ini_get('date.timezone');
+    }
+    if ($sc_tz === '' || strtolower($sc_tz) === 'utc') {
+        $sc_tz = 'Asia/Shanghai';
+    }
+    @date_default_timezone_set($sc_tz);
 }
 
 /* sc_boot_check_cache_dir()
@@ -47,8 +54,7 @@ if (!function_exists('sc_boot_check_modern_marker')) {
  *     2. per-host     -- HISTORY/.sc_os_build
  *     3. cold start   -- shell_exec('ver'), parsed, persisted
  *
- *   Failure modes: non-Windows, no shell_exec, or unparseable 'ver'
- *   all return false. */
+ *   Failure modes: no shell_exec or unparseable 'ver' return false. */
 if (!function_exists('sc_is_modern_windows')) {
     function sc_is_modern_windows() {
         static $cached = null;

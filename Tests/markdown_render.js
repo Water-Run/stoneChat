@@ -110,7 +110,7 @@ vm.runInNewContext(
 
 context.window.SC.Chat.renderMessage(
   'assistant',
-  '**bold** and `code`\n- first\n```html\n<x>\n```\n[bad](javascript:alert(1)) [ok](https://example.com)',
+  '<think>\nprivate notes\n</think>\n**bold** and `code`\n- first\n```html\n<x>\n```\n[bad](javascript:alert(1)) [ok](https://example.com)',
   new Date(2026, 0, 2, 3, 4)
 );
 
@@ -126,6 +126,16 @@ if (body.getElementsByTagName('CODE').length < 2) {
 }
 if (body.getElementsByTagName('LI').length !== 1) {
   failures.push('dash list item should render as LI');
+}
+if (body.getElementsByTagName('DIV').length < 1) {
+  failures.push('think block should render as a DIV');
+}
+if (body.textContent.indexOf('<think>') !== -1
+    || body.textContent.indexOf('</think>') !== -1) {
+  failures.push('think tags should not remain visible');
+}
+if (body.textContent.indexOf('private notes') === -1) {
+  failures.push('think block text should remain visible');
 }
 if (body.getElementsByTagName('A').length !== 1) {
   failures.push('only safe links should render as anchors');

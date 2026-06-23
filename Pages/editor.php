@@ -2,8 +2,14 @@
 /* -------------------------------------------------------------------------
  * stoneChat / Pages/editor.php
  *
- * Optional online CONF.ini editor. Disabled unless
- * [ui] allow_online_editor = true.
+ * Optional CONF.ini editor. Requires:
+ *   [ui] allow_online_editor = true
+ *   current [User NAME].can_edit_config = true
+ *
+ * On IE/Windows, the first choice is the old desktop way: the page
+ * tries WScript.Shell ActiveX to open CONF.ini in Notepad. The web
+ * textarea is kept as a fallback for browsers that cannot start a
+ * local desktop program.
  *
  * This page intentionally includes library files only. The JSON API files
  * are entry points and would emit responses immediately if included here.
@@ -75,6 +81,26 @@ if (!function_exists('sc_editor_h')) {
     }
 }
 
+if (!function_exists('sc_editor_native_path')) {
+    function sc_editor_native_path($ini_path) {
+        $real = @realpath($ini_path);
+        if ($real === false || !is_file($real)) {
+            return (string)$ini_path;
+        }
+        return $real;
+    }
+}
+
+if (!function_exists('sc_editor_js_string')) {
+    function sc_editor_js_string($text) {
+        $text = (string)$text;
+        $text = str_replace('\\', '\\\\', $text);
+        $text = str_replace('"', '\\"', $text);
+        $text = str_replace(array("\r", "\n"), array('\\r', '\\n'), $text);
+        return '"' . $text . '"';
+    }
+}
+
 $ini_path = sc_editor_ini_path();
 $cfg = sc_load_config($ini_path);
 if (!is_array($cfg)) {
@@ -93,14 +119,16 @@ if (isset($cfg['ui']) && is_array($cfg['ui'])
 }
 if (!$enabled) {
     echo '<!doctype html><html><body><script type="text/javascript">'
-       . 'alert("Online config editor is DISABLED in CONF.ini '
-       . '(allow_online_editor = false).");window.close();'
+       . 'alert("CONF.ini editor is disabled by [ui] '
+       . 'allow_online_editor.");window.close();'
        . '</script></body></html>';
     exit;
 }
 
 $message = '';
 $message_class = '';
+$open_native = (isset($_GET['open_native'])
+                && (string)$_GET['open_native'] === '1');
 if (isset($_SERVER['REQUEST_METHOD'])
     && strtoupper((string)$_SERVER['REQUEST_METHOD']) === 'POST'
     && isset($_POST['config_content'])) {
@@ -115,7 +143,7 @@ if (isset($_SERVER['REQUEST_METHOD'])
 
     $bytes = @file_put_contents($ini_path, $content);
     if ($bytes !== false) {
-        $message = 'Configuration saved successfully. Click Reload config in the chat page.';
+        $message = 'Configuration saved successfully.';
         $message_class = 'success';
     } else {
         $message = 'Failed to save configuration. Check file permissions.';
@@ -127,46 +155,102 @@ $content = @file_get_contents($ini_path);
 if (!is_string($content)) {
     $content = '; Could not read CONF.ini';
 }
+$native_path = sc_editor_native_path($ini_path);
+$native_cmd = 'notepad.exe "' . str_replace('"', '', $native_path) . '"';
 ?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat - CONF.ini Editor</title>
-<link rel="stylesheet" type="text/css" href="css/main.css" />
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260623i" />
 <style type="text/css">
-  .editor-wrap { max-width: 800px; margin: 20px auto; padding: 20px; background: #fff; border: 1px solid #ccc; }
-  .editor-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-  .editor-warning { background: #ffebeb; border: 1px solid #ffcccc; color: #cc0000; padding: 10px; margin-bottom: 15px; font-size: 12px; }
-  textarea { width: 100%; height: 400px; font-family: "Courier New", monospace; font-size: 13px; line-height: 1.4; border: 1px solid #999; padding: 5px; }
+  body { background: #d4d0c8; color: #000; font-family: Tahoma, "MS Sans Serif", Arial, sans-serif; font-size: 12px; }
+  .editor-wrap { width: 760px; margin: 18px auto; padding: 0; background: #ece9d8; border: 2px outset #fff; }
+  .editor-title { font-size: 12px; font-weight: bold; color: #fff; background: #0a246a; padding: 4px 6px; }
+  .editor-panel { padding: 10px; }
+  .editor-warning { background: #ffffe1; border: 1px solid #808080; color: #000; padding: 8px; margin-bottom: 10px; font-size: 12px; }
+  textarea { width: 100%; height: 360px; font-family: "Courier New", monospace; font-size: 13px; line-height: 1.35; border: 2px inset #fff; padding: 4px; background: #fff; color: #000; }
   .editor-actions { margin-top: 15px; text-align: right; }
-  .editor-msg { padding: 10px; margin-bottom: 15px; font-weight: bold; }
-  .editor-msg.success { background: #e6f7e6; color: #006600; border: 1px solid #b3e6b3; }
-  .editor-msg.error { background: #ffebeb; color: #cc0000; border: 1px solid #ffcccc; }
-  .btn { padding: 5px 15px; font-size: 12px; cursor: pointer; background: #eee; border: 1px solid #999; }
+  .editor-native { margin-bottom: 10px; padding: 8px; border: 1px solid #808080; background: #fff; }
+  .editor-msg { padding: 8px; margin-bottom: 10px; font-weight: bold; border: 1px solid #808080; background: #fff; }
+  .editor-msg.success { color: #006000; }
+  .editor-msg.error { color: #a00000; }
+  .btn { padding: 3px 14px; font-size: 12px; cursor: pointer; background: #ece9d8; border: 2px outset #fff; font-family: Tahoma, "MS Sans Serif", Arial, sans-serif; }
+  .btn:active { border: 2px inset #fff; }
+  .editor-small { color: #404040; margin-top: 6px; }
 </style>
+<script type="text/javascript">
+//<![CDATA[
+var sc_editor_native_path = <?php echo sc_editor_js_string($native_path); ?>;
+var sc_editor_native_cmd = <?php echo sc_editor_js_string($native_cmd); ?>;
+var sc_editor_open_on_load = <?php echo $open_native ? 'true' : 'false'; ?>;
+
+function sc_editor_message(text, className) {
+  var box = document.getElementById('editor-msg-client');
+  if (!box) { return; }
+  box.className = 'editor-msg ' + className;
+  if (typeof box.innerText !== 'undefined') {
+    box.innerText = text;
+  } else {
+    box.textContent = text;
+  }
+  box.style.display = 'block';
+}
+
+function sc_editor_open_native() {
+  try {
+    var shell = new ActiveXObject('WScript.Shell');
+    shell.Run(sc_editor_native_cmd, 1, false);
+    sc_editor_message('Notepad has been asked to open CONF.ini.', 'success');
+  } catch (e) {
+    sc_editor_message('Could not start Notepad from this browser. Use Start > Run: ' + sc_editor_native_cmd, 'error');
+  }
+  return false;
+}
+
+function sc_editor_page_load() {
+  if (sc_editor_open_on_load) {
+    sc_editor_open_native();
+  }
+}
+//]]>
+</script>
 </head>
-<body>
+<body onload="sc_editor_page_load()">
 <div class="editor-wrap">
   <div class="editor-title">CONF.ini Editor</div>
+  <div class="editor-panel">
 
   <div class="editor-warning">
-    <strong>WARNING: Remote Code Execution Risk</strong><br />
-    This editor writes server configuration. Enable it only on a trusted LAN,
-    and turn <code>allow_online_editor</code> off when you are done.
+    <strong>Notice</strong><br />
+    First try the Windows editor. Save the file in Notepad, close it,
+    then return to stoneChat and click Reload config.
   </div>
 
   <?php if ($message !== '') { ?>
     <div class="editor-msg <?php echo sc_editor_h($message_class); ?>"><?php echo sc_editor_h($message); ?></div>
   <?php } ?>
+  <div id="editor-msg-client" class="editor-msg" style="display:none"></div>
+
+  <div class="editor-native">
+    <form method="post" action="editor.php" onsubmit="return sc_editor_open_native();">
+      <input type="hidden" name="open_native" value="1" />
+      <button type="submit" class="btn" name="open_native" value="1">Open in Notepad</button>
+      <button type="button" class="btn" onclick="window.close()">Close Window</button>
+    </form>
+    <div class="editor-small">If Notepad does not appear, use Start &gt; Run: <code><?php echo sc_editor_h($native_cmd); ?></code></div>
+    <div class="editor-small">Fallback path: <code><?php echo sc_editor_h($native_path); ?></code></div>
+  </div>
 
   <form method="post" action="editor.php">
     <textarea name="config_content" spellcheck="false"><?php echo sc_editor_h($content); ?></textarea>
     <div class="editor-actions">
       <button type="button" class="btn" onclick="window.close()">Close Window</button>
-      <button type="submit" class="btn">Save Configuration</button>
+      <button type="submit" class="btn">Save in Web Editor</button>
     </div>
   </form>
+  </div>
 </div>
 </body>
 </html>

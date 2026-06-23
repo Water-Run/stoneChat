@@ -663,9 +663,45 @@ if (!function_exists('sc_llm_chat')) {
     }
 }
 
+/* sc_llm_title_from_harness($raw)
+ *   Extract SC_TITLE:<name> from a model reply. Reasoning models may
+ *   still emit <think>...</think>; discard it and accept only the
+ *   harness line. */
+if (!function_exists('sc_llm_title_from_harness')) {
+    function sc_llm_title_from_harness($raw) {
+        $text = (string)$raw;
+        $text = preg_replace('/<think>.*?<\/think>/is', '', $text);
+        $title = '';
+        if (preg_match('/(^|\r|\n)\s*SC_TITLE\s*:\s*([^\r\n]+)/i',
+                       $text, $m)) {
+            $title = trim((string)$m[2]);
+        } elseif (preg_match('/SC_TITLE\s*:\s*(.+)$/is', $text, $m)) {
+            $title = trim((string)$m[1]);
+        } else {
+            return '';
+        }
+        $title = preg_replace('/<[^>]+>/', '', $title);
+        $title = trim($title, " \t\n\r\0\x0B\"'`");
+        $bad = array("\r", "\n", "\t");
+        $title = str_replace($bad, ' ', $title);
+        while (strpos($title, '  ') !== false) {
+            $title = str_replace('  ', ' ', $title);
+        }
+        if ($title === '' || stripos($title, 'SC_TITLE') !== false) {
+            return '';
+        }
+        if (function_exists('mb_substr')) {
+            $title = mb_substr($title, 0, 60);
+        } else {
+            $title = substr($title, 0, 60);
+        }
+        return trim($title);
+    }
+}
+
 /* sc_llm_generate_chat_name($provider_config, $messages)
- *   Ask the LLM to summarise a conversation in 2-6 words. Uses
- *   the first few messages; returns '' on failure. */
+ *   Ask the LLM to summarise a conversation in a short title. The
+ *   harness demands one fast machine-readable line: SC_TITLE:<title>. */
 if (!function_exists('sc_llm_generate_chat_name')) {
     function sc_llm_generate_chat_name($provider_config, $messages) {
         if (!is_array($provider_config) || !is_array($messages)
@@ -678,34 +714,47 @@ if (!function_exists('sc_llm_generate_chat_name')) {
             if ($count >= 6) {
                 break;
             }
-            if (is_array($m) && isset($m['role'], $m['content'])) {
-                $snippet[] = (string)$m['role'] . ': '
-                           . (string)$m['content'];
+            if (is_array($m) && isset($m['role'])) {
+                $content = '';
+                if (isset($m['content'])) {
+                    $content = (string)$m['content'];
+                } elseif (isset($m['text'])) {
+                    $content = (string)$m['text'];
+                }
+                if ($content === '') {
+                    continue;
+                }
+                $snippet[] = (string)$m['role'] . ': ' . $content;
                 $count++;
             }
         }
         if (empty($snippet)) {
             return '';
         }
-        $prompt = "Summarize the following conversation in 2-6 words "
-                . "as a short title. Output ONLY the title, no quotes, "
-                . "no explanation.\n\n" . implode("\n", $snippet);
+        $system = "stoneChat title harness. Reply fast. "
+                . "Do not reason. Do not use <think>. "
+                . "Return exactly one line in this format: "
+                . "SC_TITLE:<2-6 word title>";
+        $prompt = "Summarize this conversation as a short chat title.\n"
+                . "Rules:\n"
+                . "- Reply as fast as possible.\n"
+                . "- Output exactly one line.\n"
+                . "- The line must start with SC_TITLE:.\n"
+                . "- No markdown, no quotes, no explanation.\n\n"
+                . implode("\n", $snippet);
         $result = sc_llm_chat(
             $provider_config,
-            array(array('role' => 'user', 'content' => $prompt)),
+            array(
+                array('role' => 'system', 'content' => $system),
+                array('role' => 'user', 'content' => $prompt),
+            ),
             ''
         );
         if (!is_array($result) || empty($result['ok'])) {
             return '';
         }
-        $name = isset($result['content'])
-                ? trim((string)$result['content']) : '';
-        $name = trim($name, " \t\n\r\0\x0B\"'");
-        if (function_exists('mb_substr')) {
-            $name = mb_substr($name, 0, 60);
-        } else {
-            $name = substr($name, 0, 60);
-        }
-        return $name;
+        return sc_llm_title_from_harness(
+            isset($result['content']) ? (string)$result['content'] : ''
+        );
     }
 }

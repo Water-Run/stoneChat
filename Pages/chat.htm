@@ -5,12 +5,11 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat</title>
-<link rel="stylesheet" type="text/css" href="css/main.css" />
-<script type="text/javascript" src="js/i18n.js"></script>
-<script type="text/javascript" src="js/api.js"></script>
-<script type="text/javascript" src="js/chat.js"></script>
-<script type="text/javascript" src="js/app.js"></script>
-<script type="text/javascript" src="js/modern-banner.js"></script>
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260623i" />
+<script type="text/javascript" src="js/i18n.js?v=20260623i"></script>
+<script type="text/javascript" src="js/api.js?v=20260623i"></script>
+<script type="text/javascript" src="js/chat.js?v=20260623i"></script>
+<script type="text/javascript" src="js/app.js?v=20260623i"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -22,7 +21,6 @@
       <span data-i18n="app.title">stoneChat</span>
     </div>
     <div class="lang-switcher" id="sc-lang-switcher"></div>
-    <div class="user-mark" id="sc-user-mark">User: -</div>
     <div class="clear"></div>
   </div>
 
@@ -36,8 +34,10 @@
       </div>
       <ul class="history-list" id="sc-history-list"></ul>
       <div class="sidebar-footer">
+        <input type="text" class="history-search" id="sc-history-search" value="" data-i18n-title="sidebar.search" />
         <a class="btn" id="sc-open-config-btn" href="javascript:void(0)" data-i18n="chat.editConfig">[Edit config]</a>
         <a class="btn" id="sc-reload-config-btn" href="javascript:void(0)" data-i18n="chat.reloadConfig">[Reload config]</a>
+        <a class="btn" id="sc-about-btn" href="javascript:void(0)" data-i18n="chat.about">[About]</a>
         <a class="btn" id="sc-logout-btn" href="javascript:void(0)" data-i18n="chat.logout">[Logout]</a>
       </div>
     </div>
@@ -55,10 +55,11 @@
       <div class="input-area">
         <textarea id="chat-input" name="msg-input" class="msg-input" rows="3" cols="60"></textarea>
         <div class="input-toolbar">
-          <span class="char-count" id="char-count">Chars: 0 / 32768</span>
-          <span class="countdown" id="countdown">Wait: 0s</span>
-          <span class="send-hint" id="send-hint">Enter发送 / Shift+Enter换行</span>
+          <span class="char-count" id="char-count">...</span>
+          <span class="countdown" id="countdown">...</span>
+          <span class="send-hint" id="send-hint">...</span>
           <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)" data-i18n="chat.regenerate">[Regenerate]</a>
+          <a class="btn name-button" id="name-button" href="javascript:void(0)" data-i18n="chat.generateTitle">[Title]</a>
           <a class="btn stop-button" id="stop-button" href="javascript:void(0)" data-i18n="chat.stop">[Stop]</a>
           <a class="btn send-button" id="send-button" href="javascript:void(0)" data-i18n="chat.send">[Send]</a>
         </div>

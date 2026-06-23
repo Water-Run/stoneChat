@@ -104,6 +104,26 @@ if (!function_exists('sc_auth_truthy')) {
     }
 }
 
+/* sc_auth_apply_timezone($cfg)
+ *   auth.php is sometimes loaded by command-line checks without
+ *   boot_check.php. Set the log clock here too, using the project's
+ *   old Windows local default when PHP has no useful default. */
+if (!function_exists('sc_auth_apply_timezone')) {
+    function sc_auth_apply_timezone($cfg) {
+        if (!function_exists('date_default_timezone_set')) {
+            return;
+        }
+        $tz = '';
+        if (function_exists('ini_get')) {
+            $tz = (string)@ini_get('date.timezone');
+        }
+        if ($tz === '' || strtolower($tz) === 'utc') {
+            $tz = 'Asia/Shanghai';
+        }
+        @date_default_timezone_set($tz);
+    }
+}
+
 /* sc_auth_config_users($cfg)
  *   Read [User NAME] sections. NAME is the login/display username.
  *   Rights live directly under the same section. */
@@ -124,17 +144,30 @@ if (!function_exists('sc_auth_config_users')) {
             $password = isset($row['password']) ? (string)$row['password'] : '';
             $active   = isset($row['active'])
                         ? sc_auth_truthy($row['active'], false) : false;
-            $allow_config = isset($row['allow_config'])
-                            ? sc_auth_truthy($row['allow_config'], false)
-                            : false;
-            $allow_models = isset($row['allow_models'])
-                            ? trim((string)$row['allow_models']) : '';
+            $can_edit_config = isset($row['can_edit_config'])
+                               ? sc_auth_truthy($row['can_edit_config'], false)
+                               : false;
+            $excluded_models = isset($row['excluded_models'])
+                               ? trim((string)$row['excluded_models']) : '';
+            $send_shortcut = isset($row['send_shortcut'])
+                             ? strtolower(trim((string)$row['send_shortcut']))
+                             : 'enter';
+            if ($send_shortcut !== 'shift_enter') {
+                $send_shortcut = 'enter';
+            }
+            $default_lang = isset($row['default_lang'])
+                            ? trim((string)$row['default_lang']) : '';
+            if ($default_lang === '') {
+                $default_lang = 'en';
+            }
             $out[] = array(
                 'username'        => $username,
                 'password'        => $password,
                 'active'          => $active,
-                'allow_config'    => $allow_config,
-                'allow_models'    => $allow_models,
+                'can_edit_config' => $can_edit_config,
+                'excluded_models' => $excluded_models,
+                'send_shortcut'   => $send_shortcut,
+                'default_lang'    => $default_lang,
                 'section'         => $section,
             );
         }
@@ -192,7 +225,33 @@ if (!function_exists('sc_auth_can_edit_config')) {
     function sc_auth_can_edit_config($cfg, $username) {
         $user = sc_auth_find_user_by_name($username, $cfg);
         return is_array($user) && !empty($user['active'])
-            && !empty($user['allow_config']);
+            && !empty($user['can_edit_config']);
+    }
+}
+
+if (!function_exists('sc_auth_user_send_shortcut')) {
+    function sc_auth_user_send_shortcut($cfg, $username) {
+        $user = sc_auth_find_user_by_name($username, $cfg);
+        if (!is_array($user) || empty($user['active'])) {
+            return 'enter';
+        }
+        if (isset($user['send_shortcut'])
+            && (string)$user['send_shortcut'] === 'shift_enter') {
+            return 'shift_enter';
+        }
+        return 'enter';
+    }
+}
+
+if (!function_exists('sc_auth_user_default_lang')) {
+    function sc_auth_user_default_lang($cfg, $username, $fallback) {
+        $user = sc_auth_find_user_by_name($username, $cfg);
+        if (!is_array($user) || empty($user['active'])
+            || !isset($user['default_lang'])
+            || (string)$user['default_lang'] === '') {
+            return (string)$fallback;
+        }
+        return (string)$user['default_lang'];
     }
 }
 
@@ -206,21 +265,21 @@ if (!function_exists('sc_auth_provider_allowed')) {
         if (!is_array($user) || empty($user['active'])) {
             return false;
         }
-        $text = isset($user['allow_models'])
-                ? trim((string)$user['allow_models']) : '';
-        if ($text === '*') {
+        $text = isset($user['excluded_models'])
+                ? trim((string)$user['excluded_models']) : '';
+        if ($text === '') {
             return true;
         }
-        if ($text === '') {
+        if ($text === '*') {
             return false;
         }
         $list = explode(',', $text);
         for ($i = 0; $i < count($list); $i++) {
             if (trim((string)$list[$i]) === $model_id) {
-                return true;
+                return false;
             }
         }
-        return false;
+        return true;
     }
 }
 
@@ -445,6 +504,7 @@ if (!function_exists('sc_auth_log_attempt')) {
         if (is_file($path) && !is_writable($path)) {
             return false;
         }
+        sc_auth_apply_timezone($cfg);
         $ts  = date('Y-m-d H:i:s');
         $ip  = sc_auth_sanitize_log_value($ip, 64);
         $res = $ok ? 'success' : 'failure';
@@ -531,6 +591,12 @@ if (!function_exists('sc_auth_generate_token')) {
         }
         $username = isset($user['username']) ? (string)$user['username'] : 'User';
         $secret = isset($user['password']) ? (string)$user['password'] : '';
+        if ($secret === '') {
+            $row = sc_auth_find_user_by_name($username, $cfg);
+            if (is_array($row) && isset($row['password'])) {
+                $secret = (string)$row['password'];
+            }
+        }
         $ts = time();
         $sig = md5($ts . '|' . $username . '|' . $secret);
         return 'scv3:' . $ts . ':' . rawurlencode($username) . ':' . $sig;

@@ -35,8 +35,12 @@ function sc_llm_send_via_tunnel($provider_config, $method, $path_suffix,
     global $SC_TEST_TRANSPORT_BODIES;
     $SC_TEST_TRANSPORT_BODIES[] = $body;
     $payload = '';
-    $payload .= "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n";
-    $payload .= "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n";
+    if (strpos((string)$body, 'SC_TITLE:') !== false) {
+        $payload .= "data: {\"choices\":[{\"delta\":{\"content\":\"<think>draft</think>\\nSC_TITLE: XP Repair\"}}]}\n\n";
+    } else {
+        $payload .= "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n";
+        $payload .= "data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n";
+    }
     $payload .= "data: [DONE]\n\n";
     if ($stream_callback !== null) {
         call_user_func($stream_callback, $payload);
@@ -49,22 +53,29 @@ function sc_test_stream_callback($chunk, $event) {
     $SC_TEST_STREAM_CHUNKS[] = $chunk;
 }
 
-function sc_test_router_probe($path) {
+function sc_test_router_probe($path, $modern) {
     $root = dirname(__FILE__) . '/..';
-    $cmd = 'cd ' . escapeshellarg($root) . ' && php -r '
-         . escapeshellarg(
-             'function sc_strict_environment_check(){}'
-             . '$_SERVER["REQUEST_URI"]=' . var_export($path, true) . ';'
-             . '$_SERVER["QUERY_STRING"]="";'
-             . 'ob_start();'
-             . '$r=require "Pages/router.php";'
-             . '$body=ob_get_clean();'
-             . 'echo "return=" . ($r ? "true" : "false") . "\n";'
-             . 'echo "body=" . $body . "\n";'
-         );
+    $tmp = tempnam(sys_get_temp_dir(), 'scrt');
+    $code = '<?php' . "\n"
+          . 'chdir(' . var_export($root, true) . ');' . "\n"
+          . 'function sc_strict_environment_check(){}' . "\n"
+          . ($modern ? 'function sc_is_modern_windows(){return true;}' . "\n" : '')
+          . '$_SERVER["REQUEST_URI"]=' . var_export($path, true) . ';'
+          . "\n"
+          . '$_SERVER["QUERY_STRING"]="";' . "\n"
+          . 'ob_start();' . "\n"
+          . '$r=require "Pages/router.php";' . "\n"
+          . '$body=ob_get_clean();' . "\n"
+          . 'echo "return=" . ($r ? "true" : "false") . "\n";'
+          . "\n"
+          . 'echo "body=" . $body . "\n";' . "\n";
+    @file_put_contents($tmp, $code);
+    $php = defined('PHP_BINARY') ? PHP_BINARY : 'php';
+    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($tmp);
     $out = array();
     $code = 0;
     @exec($cmd, $out, $code);
+    @unlink($tmp);
     return array('code' => $code, 'text' => implode("\n", $out));
 }
 
@@ -87,20 +98,24 @@ $auth_cfg = array(
     'User Admin' => array(
         'password' => 'admin123',
         'active' => 'true',
-        'allow_config' => 'true',
-        'allow_models' => '*',
+        'can_edit_config' => 'true',
+        'excluded_models' => '',
+        'default_lang' => 'en',
+        'send_shortcut' => 'enter',
     ),
     'User Guest' => array(
         'password' => 'guestpass',
         'active' => 'true',
-        'allow_config' => 'false',
-        'allow_models' => 'GPT55',
+        'can_edit_config' => 'false',
+        'excluded_models' => 'MiniMaxM3,MockLocal',
+        'default_lang' => 'en',
+        'send_shortcut' => 'shift_enter',
     ),
     'User Off' => array(
         'password' => 'offpass',
         'active' => 'false',
-        'allow_config' => 'false',
-        'allow_models' => '*',
+        'can_edit_config' => 'false',
+        'excluded_models' => '',
     ),
 );
 $admin_user = sc_auth_find_user_by_password('admin123', $auth_cfg);
@@ -123,14 +138,69 @@ sc_test_assert_true($test, sc_auth_can_edit_config($auth_cfg, 'Admin'),
                     'Admin user should edit config');
 sc_test_assert_true($test, !sc_auth_can_edit_config($auth_cfg, 'Guest'),
                     'Guest user should not edit config');
+sc_test_assert_true($test, function_exists('sc_auth_user_send_shortcut'),
+                    'auth should expose per-user send shortcut');
+if (function_exists('sc_auth_user_send_shortcut')) {
+    sc_test_assert_equal($test, 'enter',
+                         sc_auth_user_send_shortcut($auth_cfg, 'Admin'),
+                         'Admin should use its own send shortcut');
+    sc_test_assert_equal($test, 'shift_enter',
+                         sc_auth_user_send_shortcut($auth_cfg, 'Guest'),
+                         'Guest should use its own send shortcut');
+}
+sc_test_assert_equal($test, 'en',
+                     sc_auth_user_default_lang($auth_cfg, 'Admin', 'zh-CN'),
+                     'Admin default language should be English');
+sc_test_assert_equal($test, 'en',
+                     sc_auth_user_default_lang($auth_cfg, 'Guest', 'zh-CN'),
+                     'Guest default language should be English');
 $admin_token = sc_auth_generate_token($auth_cfg, $admin_user);
 $admin_ctx = sc_auth_token_context($admin_token, $auth_cfg);
 sc_test_assert_equal($test, 'Admin',
                      isset($admin_ctx['username'])
                      ? $admin_ctx['username'] : '',
                      'token should preserve username');
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+$login_user = sc_auth_login('admin123', $auth_cfg);
+$login_token = sc_auth_generate_token($auth_cfg, $login_user);
+$login_ctx = sc_auth_token_context($login_token, $auth_cfg);
+sc_test_assert_equal($test, 'Admin',
+                     isset($login_ctx['username'])
+                     ? $login_ctx['username'] : '',
+                     'token built from login result should verify');
 
-$test = 'user model policy allows configured model ids';
+$test = 'auth logging applies built-in local timezone without boot_check';
+if (function_exists('date_default_timezone_set')
+    && function_exists('date_default_timezone_get')) {
+    @date_default_timezone_set('UTC');
+    sc_auth_log_attempt('127.0.0.1', true, $auth_cfg);
+    sc_test_assert_equal($test, 'Asia/Shanghai',
+                         date_default_timezone_get(),
+                         'auth log should use the built-in local timezone');
+}
+
+$test = 'history roots are isolated by user';
+sc_test_assert_true($test, function_exists('sc_history_set_user'),
+                    'history module should accept a current username');
+if (function_exists('sc_history_set_user')
+    && function_exists('sc_history_root')) {
+    $hist_base = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+               . 'stonechat-history-test-' . mt_rand(1000, 9999);
+    $hist_cfg = array('ui' => array('history_dir' => $hist_base));
+    sc_history_set_user('Admin');
+    $admin_root = sc_history_root($hist_cfg);
+    sc_history_set_user('Guest');
+    $guest_root = sc_history_root($hist_cfg);
+    sc_history_set_user('');
+    sc_test_assert_true($test,
+                        $admin_root !== '' && $guest_root !== ''
+                        && $admin_root !== $guest_root
+                        && strpos($admin_root, 'Admin') !== false
+                        && strpos($guest_root, 'Guest') !== false,
+                        'Admin and Guest should use different HISTORY roots');
+}
+
+$test = 'user model policy excludes configured model ids';
 $provider_rows = array(
     array('id' => 'GPT55'),
     array('id' => 'MiniMaxM3'),
@@ -139,7 +209,7 @@ $provider_rows = array(
 $guest_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Guest');
 $admin_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Admin');
 sc_test_assert_equal($test, 1, count($guest_rows),
-                     'Guest should only see allowed models');
+                     'Guest should not see excluded models');
 sc_test_assert_equal($test, 'GPT55',
                      isset($guest_rows[0]['id']) ? $guest_rows[0]['id'] : '',
                      'Guest remaining model should be GPT55');
@@ -152,8 +222,8 @@ $bad_model_cfg = array(
     'User Admin' => array(
         'password' => 'admin123',
         'active' => 'maybe',
-        'allow_config' => 'true',
-        'allow_models' => 'MiniMaxM3,MissingModel',
+        'can_edit_config' => 'true',
+        'excluded_models' => 'MiniMaxM3,MissingModel',
     ),
     'Model MiniMaxM3' => array(
         'active' => '1',
@@ -178,9 +248,9 @@ sc_test_assert_true(
 );
 sc_test_assert_true(
     $test,
-    in_array('User Admin_allow_model_missing:MissingModel',
+    in_array('User Admin_excluded_model_missing:MissingModel',
              $bad_model_errors, true),
-    'unknown user allow_models entry should be reported'
+    'unknown user excluded_models entry should be reported'
 );
 sc_test_assert_true(
     $test,
@@ -200,8 +270,8 @@ $inactive_provider_cfg = array(
     'User Admin' => array(
         'password' => 'admin123',
         'active' => '1',
-        'allow_config' => '1',
-        'allow_models' => '*',
+        'can_edit_config' => '1',
+        'excluded_models' => '',
     ),
     'Model GPT55' => array(
         'active' => '0',
@@ -217,12 +287,20 @@ $inactive_errors = sc_config_fatal_errors(
 sc_test_assert_equal($test, array(), $inactive_errors,
                      'inactive models should not block startup');
 
-$test = 'sc_validate_path_resolve preserves POSIX absolute base';
+$test = 'sc_validate_path_resolve preserves absolute base';
 $resolved = sc_validate_path_resolve(
     '../ModernNetwork/cacert.pem',
     dirname(__FILE__) . '/../Server'
 );
-sc_test_assert_true($test, strlen($resolved) > 0 && $resolved[0] === '/',
+$is_abs = false;
+if (strlen($resolved) > 0
+    && ($resolved[0] === '/' || $resolved[0] === '\\')) {
+    $is_abs = true;
+}
+if (strlen($resolved) >= 2 && $resolved[1] === ':') {
+    $is_abs = true;
+}
+sc_test_assert_true($test, $is_abs,
                     'resolved path should remain absolute');
 sc_test_assert_true($test, is_file($resolved),
                     'resolved CA certificate path should exist');
@@ -308,7 +386,22 @@ sc_test_assert_equal($test, 88,
                      'Anthropic body should use caller max_tokens');
 
 $test = 'model loader preserves optional model fields';
-$providers = sc_load_providers($root . '/CONF.ini');
+$tmp_ini = tempnam(sys_get_temp_dir(), 'scini');
+file_put_contents(
+    $tmp_ini,
+    "[Model MockLocal]\n"
+    . "active = 1\n"
+    . "label = Mock Local\n"
+    . "type = openai\n"
+    . "api_base = http://localhost:9998/Server/api/mock_llm.php\n"
+    . "api_key = mock_key\n"
+    . "model = mock-gpt\n"
+    . "stream = true\n"
+    . "max_tokens = 256\n"
+    . "timeout = 20\n"
+);
+$providers = sc_load_providers($tmp_ini);
+@unlink($tmp_ini);
 $mock_provider = null;
 if (is_array($providers)) {
     foreach ($providers as $row) {
@@ -333,7 +426,7 @@ if (is_array($mock_provider)) {
 $test = 'config validation separates fatal startup errors';
 $sample_errors = array(
     'auth_user_password_is_placeholder',
-    'User Guest_allow_model_missing:NoSuchModel',
+    'User Guest_excluded_model_missing:NoSuchModel',
     'paths_stunnel_missing',
     'Model GPT55_api_key_is_placeholder',
     'Model BadModel_invalid_type',
@@ -341,7 +434,7 @@ $sample_errors = array(
 $fatal_errors = sc_config_fatal_errors($sample_errors);
 sc_test_assert_equal($test, array(
                          'auth_user_password_is_placeholder',
-                         'User Guest_allow_model_missing:NoSuchModel',
+                         'User Guest_excluded_model_missing:NoSuchModel',
                          'Model GPT55_api_key_is_placeholder',
                          'Model BadModel_invalid_type'
                      ),
@@ -361,19 +454,49 @@ if (is_string($sample_ini)) {
     );
     sc_test_assert_true(
         $test,
+        strpos($sample_ini, '[User Admin]') !== false
+        && strpos($sample_ini, 'can_edit_config = true') !== false
+        && strpos($sample_ini, 'default_lang = en') !== false
+        && strpos($sample_ini, 'allow_online_editor = true') !== false,
+        'sample Admin should be able to open the web config editor'
+    );
+    sc_test_assert_true(
+        $test,
         strpos($sample_ini, '[User Guest]') !== false
-        && strpos($sample_ini, 'password = guestpass') !== false,
-        'sample config should include default Guest user'
+        && strpos($sample_ini, 'password = guestpass') !== false
+        && strpos($sample_ini, 'can_edit_config = false') !== false,
+        'sample Guest should exist but not edit config'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($sample_ini, 'send_shortcut = enter') !== false
+        && strpos($sample_ini, 'send_shortcut = shift_enter') !== false
+        && strpos($sample_ini, '[ui]') !== false,
+        'send shortcut should be configured on each user'
     );
     sc_test_assert_true(
         $test,
         strpos($sample_ini, '[Model MiniMaxM3]') !== false
         && strpos($sample_ini, '[Model GPT55]') !== false
-        && strpos($sample_ini, 'allow_models =') !== false
+        && strpos($sample_ini, 'excluded_models =') !== false
+        && strpos($sample_ini, 'allow_models =') === false
+        && strpos($sample_ini, 'allow_config =') === false
         && strpos($sample_ini, 'api_base =') !== false
         && strpos($sample_ini, '[Provider ') === false
         && strpos($sample_ini, 'model_id =') === false,
         'sample config should explain direct model units'
+    );
+}
+
+$test = 'sample config keeps runtime knobs simple';
+if (is_string($sample_ini)) {
+    sc_test_assert_true(
+        $test,
+        strpos($sample_ini, 'auto_name') === false
+        && strpos($sample_ini, 'font_profile') === false
+        && strpos($sample_ini, 'timezone') === false
+        && strpos($sample_ini, 'history_dir') === false,
+        'sample config should not expose fine-grained runtime knobs'
     );
 }
 
@@ -428,6 +551,46 @@ if (is_array($raw_false) && count($raw_false) === 1) {
                          'stream=false should survive parse_ini_file');
 }
 
+$test = 'LLM chat naming accepts history text fields';
+$body_count = count($SC_TEST_TRANSPORT_BODIES);
+$title = sc_llm_generate_chat_name(
+    array(
+        'type'     => 'openai',
+        'api_key'  => 'test-key',
+        'model'    => 'test-model',
+        'api_base' => 'http://localhost:9998/v1',
+    ),
+    array(
+        array('role' => 'user', 'text' => 'How to repair Windows XP?'),
+        array('role' => 'assistant', 'text' => 'Use the recovery console.'),
+    )
+);
+sc_test_assert_equal($test, 'XP Repair', $title,
+                     'name generator should parse harness title only');
+$name_body = isset($SC_TEST_TRANSPORT_BODIES[$body_count])
+             ? json_decode($SC_TEST_TRANSPORT_BODIES[$body_count], true)
+             : null;
+$name_prompt = '';
+if (is_array($name_body)
+    && isset($name_body['messages'])
+    && is_array($name_body['messages'])) {
+    for ($i = 0; $i < count($name_body['messages']); $i++) {
+        if (isset($name_body['messages'][$i]['content'])) {
+            $name_prompt .= "\n" . (string)$name_body['messages'][$i]['content'];
+        }
+    }
+}
+sc_test_assert_true($test,
+                    strpos($name_prompt, 'user: How to repair Windows XP?')
+                    !== false
+                    && strpos($name_prompt, 'SC_TITLE:') !== false
+                    && strpos($name_prompt, 'fast') !== false,
+                    'name prompt should include text-field user content and strict harness');
+sc_test_assert_true($test,
+                    strpos($title, '<think>') === false
+                    && strpos($title, 'SC_TITLE:') === false,
+                    'name parser should strip reasoning and harness tags');
+
 $test = 'chat stream path parses provider stream=false';
 sc_test_assert_equal($test, false,
                      sc_api_chat_provider_stream(
@@ -440,8 +603,43 @@ sc_test_assert_equal($test, true,
                      ),
                      'stream=true should enable upstream streaming');
 
+$test = 'manual title naming is a separate action';
+$chat_php = @file_get_contents($root . '/Server/api/chat.php');
+if (is_string($chat_php)) {
+    sc_test_assert_true(
+        $test,
+        strpos($chat_php, "action === 'name'") !== false
+        && strpos($chat_php, 'sc_api_chat_handle_name') !== false,
+        'chat API should expose a separate title naming action'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_php, 'auto_name') === false
+        && strpos($chat_php, 'not_first_turn') === false,
+        'title naming should be manual, not auto-name first-turn logic'
+    );
+}
+
 $test = 'router returns explicit 404 for Server library PHP files';
-$probe = sc_test_router_probe('/Server/config.php');
+$router_text = @file_get_contents($root . '/Pages/router.php');
+sc_test_assert_true($test, is_string($router_text),
+                    'router should be readable');
+if (is_string($router_text)) {
+    sc_test_assert_true(
+        $test,
+        strpos($router_text, 'Cache-Control: no-store, no-cache, must-revalidate') !== false
+        && strpos($router_text, "text/html; charset=UTF-8") !== false,
+        'router should serve HTML with IE-safe no-cache headers'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($router_text, "text/javascript; charset=UTF-8") !== false
+        && strpos($router_text, "text/css; charset=UTF-8") !== false
+        && strpos($router_text, 'sc_router_no_cache') !== false,
+        'router should also serve JS/CSS with IE-safe no-cache headers'
+    );
+}
+$probe = sc_test_router_probe('/Server/config.php', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
@@ -450,16 +648,21 @@ sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should emit a 404 body');
 
 $test = 'router returns explicit 404 for missing Pages files';
-$probe = sc_test_router_probe('/Pages/missing.htm');
+$probe = sc_test_router_probe('/Pages/missing.htm', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
                     'router should handle the missing page itself');
 sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should emit a 404 body');
+$probe = sc_test_router_probe('/Pages/missing.htm', true);
+sc_test_assert_equal($test, 0, $probe['code'],
+                     'modern router probe should execute');
+sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
+                    'modern redirect should not hide missing pages');
 
 $test = 'router does not expose CONF.ini';
-$probe = sc_test_router_probe('/CONF.ini');
+$probe = sc_test_router_probe('/CONF.ini', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
@@ -468,7 +671,7 @@ sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should emit a 404 body');
 
 $test = 'router does not expose HISTORY runtime files';
-$probe = sc_test_router_probe('/HISTORY/example/meta.txt');
+$probe = sc_test_router_probe('/HISTORY/example/meta.txt', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
@@ -477,21 +680,21 @@ sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should emit a 404 body');
 
 $test = 'router blocks path traversal before static fallback';
-$probe = sc_test_router_probe('/Pages/../CONF.ini');
+$probe = sc_test_router_probe('/Pages/../CONF.ini', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute for Pages traversal');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
                     'router should handle Pages traversal itself');
 sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should 404 Pages traversal');
-$probe = sc_test_router_probe('/Assets/../CONF.ini');
+$probe = sc_test_router_probe('/Assets/../CONF.ini', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute for Assets traversal');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
                     'router should handle Assets traversal itself');
 sc_test_assert_true($test, strpos($probe['text'], '404 Not Found') !== false,
                     'router should 404 Assets traversal');
-$probe = sc_test_router_probe('/Server/api/../config.php');
+$probe = sc_test_router_probe('/Server/api/../config.php', false);
 sc_test_assert_equal($test, 0, $probe['code'],
                      'router probe should execute for Server traversal');
 sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
@@ -507,7 +710,7 @@ $runtime_files = array(
 foreach ($runtime_files as $runtime_name => $runtime_body) {
     $runtime_path = $root . '/ModernNetwork/' . $runtime_name;
     @file_put_contents($runtime_path, $runtime_body);
-    $probe = sc_test_router_probe('/ModernNetwork/' . $runtime_name);
+    $probe = sc_test_router_probe('/ModernNetwork/' . $runtime_name, false);
     @unlink($runtime_path);
     sc_test_assert_equal($test, 0, $probe['code'],
                          'router probe should execute for ' . $runtime_name);
@@ -618,6 +821,24 @@ if (is_string($editor_text)) {
         strpos($editor_text, "\n<?xml") === false,
         'editor.php should not contain a raw XML declaration after PHP'
     );
+    sc_test_assert_true(
+        $test,
+        strpos($editor_text, 'sc_editor_native_path') !== false
+        && strpos($editor_text, 'ActiveXObject') !== false
+        && strpos($editor_text, 'WScript.Shell') !== false
+        && strpos($editor_text, 'notepad.exe') !== false
+        && strpos($editor_text, 'action="editor.php"') !== false
+        && strpos($editor_text, 'name="open_native"') !== false
+        && strpos($editor_text, '<textarea name="config_content"') !== false,
+        'editor.php should prefer IE ActiveX Notepad and keep web editor fallback'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($editor_text, 'popen(') === false
+        && strpos($editor_text, 'exec($cmd') === false
+        && strpos($editor_text, "new COM('WScript.Shell')") === false,
+        'editor.php should not block PHP while trying to open Notepad'
+    );
 }
 
 $test = 'install mechanism is removed';
@@ -664,14 +885,19 @@ if (is_string($run_text)) {
         'RUN.cmd should not advertise PHP 5.2 as runnable with php -S'
     );
 }
-$readme_text = @file_get_contents($root . '/README');
+$readme_text = @file_get_contents($root . '/README.org');
 sc_test_assert_true($test, is_string($readme_text),
-                    'README should be readable');
+                    'README.org should be readable');
 if (is_string($readme_text)) {
     sc_test_assert_true(
         $test,
         strpos($readme_text, 'PHP 5.4') !== false,
-        'README should document PHP 5.4+ runtime requirement'
+        'README.org should document PHP 5.4+ runtime requirement'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($readme_text, '#+TITLE: stoneChat') !== false,
+        'README.org should use Org title metadata'
     );
 }
 
@@ -827,7 +1053,6 @@ if (is_string($boot_check)) {
 }
 
 $test = 'streaming chat handlers emit errors on LLM dispatch failure';
-$chat_php = @file_get_contents($root . '/Server/api/chat.php');
 sc_test_assert_true($test, is_string($chat_php),
                     'Server/api/chat.php should be readable');
 if (is_string($chat_php)) {
@@ -840,6 +1065,169 @@ if (is_string($chat_php)) {
         $test,
         substr_count($chat_php, 'sc_api_chat_stream_result_error($result)') >= 2,
         'both send_stream and regenerate_stream should check dispatch result'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_php, 'function sc_api_chat_stream_headers') !== false
+        && substr_count($chat_php, 'sc_api_chat_stream_headers();') >= 2,
+        'stream handlers should set SSE headers before early errors'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_php, '$assistant === \'\' && $stream_err !== \'\'') === false,
+        'stream handlers should surface dispatch errors even after partial chunks'
+    );
+}
+
+$test = 'front-end documents slogan and avoids stale delete wording';
+$app_js = @file_get_contents($root . '/Pages/js/app.js');
+$api_js = @file_get_contents($root . '/Pages/js/api.js');
+$chat_js = @file_get_contents($root . '/Pages/js/chat.js');
+$i18n_js = @file_get_contents($root . '/Pages/js/i18n.js');
+$chat_htm = @file_get_contents($root . '/Pages/chat.htm');
+$index_htm = @file_get_contents($root . '/Pages/index.htm');
+$auth_api_php = @file_get_contents($root . '/Server/api/auth.php');
+$config_api_php = @file_get_contents($root . '/Server/api/config.php');
+$server_i18n_php = @file_get_contents($root . '/Server/i18n.php');
+$main_css = @file_get_contents($root . '/Pages/css/main.css');
+$readme_text = @file_get_contents($root . '/README.org');
+sc_test_assert_true($test,
+                    is_string($app_js) && is_string($chat_js)
+                    && is_string($i18n_js)
+                    && is_string($chat_htm) && is_string($index_htm)
+                    && is_string($main_css) && is_string($auth_api_php)
+                    && is_string($config_api_php)
+                    && is_string($server_i18n_php)
+                    && is_string($readme_text),
+                    'front-end and README.org files should be readable');
+if (is_string($app_js) && is_string($chat_js)
+    && is_string($chat_htm) && is_string($index_htm)
+    && is_string($main_css)
+    && is_string($readme_text)) {
+    sc_test_assert_true(
+        $test,
+        strpos($app_js, 'Recycle Bin') === false
+        && strpos($app_js, 'On Windows it will') === false,
+        'delete confirmation should not mention recycle-bin wording'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_htm, 'sc-history-search') !== false
+        && strpos($chat_htm, 'sc-about-btn') !== false,
+        'chat page should expose history search and About link'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($app_js, 'Author: WaterRun') !== false
+        && strpos($app_js, 'a caveman peeking at modern technology') !== false
+        && strpos($readme_text, '#+AUTHOR: WaterRun') !== false
+        && strpos($readme_text, 'a caveman peeking at modern technology') !== false,
+        'About dialog and README.org should keep author and slogan'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($app_js, 'Protocol:') === false
+        && strpos($app_js, 'Modern Windows') !== false
+        && strpos($app_js, 'Modern Browser') !== false
+        && strpos($app_js, 'Time Zone') !== false,
+        'About dialog should show runtime environment, not protocol text'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($app_js, "window.open('editor.php?open_native=1'") !== false
+        && strpos($app_js, 'currentConfig.can_edit_config === true') === false
+        && strpos($app_js, 'This user may not edit CONF.ini') === false
+        && strpos($i18n_js, 'chat.configNoRight') === false,
+        'Edit config click should ask editor.php to open native editor'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($api_js, 'sc_cacheBustUrl') !== false
+        && strpos($api_js, "setRequestHeader('Cache-Control', 'no-cache')") !== false
+        && strpos($config_api_php, 'Cache-Control: no-store') !== false,
+        'IE-safe GET requests should bypass stale cached config'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_htm, 'name-button') !== false
+        && strpos($chat_htm, 'chat.generateTitle') !== false
+        && strpos($chat_htm, 'regenerate-button') < strpos($chat_htm, 'name-button')
+        && strpos($chat_js, 'sc_generateTitle') !== false
+        && strpos($chat_js, 'nameChatAsync') !== false,
+        'front-end should expose manual async title generation beside Regenerate'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_js, 'sc_scheduleAutoName') === false
+        && strpos($chat_js, 'auto_name') === false
+        && strpos($chat_js, 'setTimeout(function ()') === false,
+        'front-end should not auto-name conversations'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_js, 'SC.Api.nameChat(') === false,
+        'front-end naming must not use synchronous XHR during streaming'
+    );
+    sc_test_assert_true(
+        $test,
+        preg_match('/(^|[^A-Za-z0-9_])nameChat[ \t]*:/', $api_js) !== 1,
+        'API facade must not expose synchronous first-turn naming'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_js, 'chat.sendHintEnter') !== false
+        && strpos($chat_js, 'chat.charCount') !== false
+        && strpos($chat_js, 'chat.wait') !== false,
+        'input toolbar text should use i18n keys'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_htm, 'i18n.init(supportedLangs, defaultLang);') !== false
+        && strpos($chat_htm, 'i18n.init(supportedLangs, defaultLang, true)') === false,
+        'chat language default should not lock out the top language buttons'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($index_htm, 'chat.htm?lang=') !== false
+        && strpos($auth_api_php, 'sc_auth_user_default_lang') !== false,
+        'login should enter chat with the current user default language'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($index_htm, 'sc_lang') === false
+        && strpos($chat_htm, 'sc_lang') === false
+        && strpos($i18n_js, 'sc_lang') === false
+        && strpos($server_i18n_php, 'sc_lang') === false
+        && strpos($readme_text, 'sc_lang') === false,
+        'front-end language selection should be URL-based, not cookie state'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_htm, 'js/app.js?v=') !== false
+        && strpos($index_htm, 'js/api.js?v=') !== false
+        && strpos($chat_htm, 'css/main.css?v=') !== false,
+        'entry pages should version CSS and JS to avoid stale browser cache'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($chat_htm, 'modern-banner.js') === false
+        && strpos($index_htm, 'modern-banner.js') === false,
+        'classic pages should not load the modern banner overlay'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($app_js, 'applyFontProfile') === false
+        && strpos($main_css, 'body.font-') === false
+        && strpos($api_js, 'font_profile') === false,
+        'front-end should not carry a font profile mechanism'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($readme_text, '#+begin_example') !== false
+        && strpos($readme_text, '[X]') !== false
+        && strpos($readme_text, 'Font profiles') === false
+        && strpos($readme_text, '| ~font_profile~') === false,
+        'README.org should use Org-specific syntax without font profile knobs'
     );
 }
 

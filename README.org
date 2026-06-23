@@ -1,0 +1,188 @@
+#+TITLE: stoneChat
+#+AUTHOR: WaterRun
+
+stoneChat is a small LLM web chat for Windows XP-era machines and IE6.
+
+#+begin_quote
+"a caveman peeking at modern technology"
+#+end_quote
+
+* Requirements
+
+PHP 5.4 or newer is required. The launcher uses PHP's built-in web
+server:
+
+#+begin_src bat
+php -S
+#+end_src
+
+For Windows XP, use this PHP 5.4 build:
+
+https://windows.php.net/downloads/releases/archives/php-5.4.45-Win32-VC9-x86.zip
+
+stunnel is also required. It provides the HTTPS layer for old Windows
+systems. Install it normally, or extract the package and set
+~[paths] stunnel~ in ~CONF.ini~ to its ~bin\stunnel.exe~.
+
+For Windows XP, use this stunnel build:
+
+https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe
+
+* Configuration
+
+Copy the sample config:
+
+#+begin_src text
+CONF_SMP.INI -> CONF.ini
+#+end_src
+
+Then edit ~CONF.ini~ with Notepad. The file is heavily commented; the
+comments are meant to be read from top to bottom.
+
+Inside stoneChat, the ~Edit config~ button opens the same configuration
+page. On Windows it first asks Notepad to open ~CONF.ini~. Save the file
+there, return to stoneChat, then click ~Reload config~. If Notepad cannot
+be started from PHP, the page still shows a plain web editor fallback.
+
+Important sections:
+
+| Section      | Purpose                                      |
+|--------------+----------------------------------------------|
+| ~[auth]~     | Brute-force lockout and session cookie name  |
+| ~[User NAME]~ | Login user, password, and rights            |
+| ~[Model NAME]~ | One complete usable LLM model unit         |
+| ~[ui]~       | Page title, fallback language, theme, editor flag |
+
+** Users
+
+The default administrator user:
+
+#+begin_src ini
+[User Admin]
+password = admin123
+active = true
+can_edit_config = true
+excluded_models =
+default_lang = en
+send_shortcut = enter
+#+end_src
+
+The default guest user:
+
+#+begin_src ini
+[User Guest]
+password = guestpass
+active = true
+can_edit_config = false
+excluded_models =
+default_lang = en
+send_shortcut = shift_enter
+#+end_src
+
+The name after ~User~ is the display name shown on the page. It does
+not decide rights. Rights are read directly from that user's own
+configuration items:
+
+| Item           | Meaning                                      |
+|----------------+----------------------------------------------|
+| ~password~     | The password typed on the login page         |
+| ~active~       | ~true~ can log in, ~false~ is disabled       |
+| ~can_edit_config~ | May open the ~CONF.ini~ editor from chat  |
+| ~excluded_models~ | Empty for all models, or a deny list      |
+| ~default_lang~ | Language selected after this user logs in    |
+| ~send_shortcut~ | Enter behavior for this user                |
+
+For example:
+
+#+begin_src ini
+excluded_models = GPT55
+#+end_src
+
+User-bound behavior checklist:
+
+- [X] Password selects the user.
+- [X] Rights are read from that user's own section.
+- [X] Language is selected from ~default_lang~ after login.
+- [X] Enter / Shift+Enter behavior is selected from ~send_shortcut~.
+
+#+begin_example
+send_shortcut = enter
+  Enter       -> send
+  Shift+Enter -> new line
+
+send_shortcut = shift_enter
+  Shift+Enter -> send
+  Enter       -> new line
+#+end_example
+
+** Models
+
+There is no separate Provider section. A model is the whole usable
+unit: API URL, API key, upstream model id, dispatch type, streaming
+setting, max token limit, and timeout all live in one ~[Model NAME]~
+section.
+
+Example:
+
+#+begin_src ini
+[Model MiniMaxM3]
+active = 1
+label = MiniMax M3
+type = openai
+api_base = https://api.minimaxi.com/v1
+api_key = YOUR_MINIMAX_API_KEY_HERE
+model = MiniMax-M3
+stream = true
+max_tokens = 1024
+timeout = 60
+#+end_src
+
+Unused sample models may remain in ~CONF.ini~, but set them inactive:
+
+#+begin_src ini
+active = 0
+#+end_src
+
+Inactive models are ignored by the loader and do not need real API
+keys.
+
+* Running
+
+Double-click:
+
+#+begin_src bat
+RUN.cmd
+#+end_src
+
+If ~CONF.ini~ does not exist, ~RUN.cmd~ copies it from ~CONF_SMP.INI~.
+
+The launcher checks:
+
+- PHP is available.
+- ~CONF.ini~ is valid.
+- The port is free or can be killed.
+- ~stunnel.exe~ exists.
+- ~cacert.pem~ exists.
+- ~HISTORY~ is writable.
+
+After startup, open:
+
+#+begin_src text
+http://localhost:9999
+#+end_src
+
+* Notes For Old Machines
+
+- The main chat page is written for IE6-era JavaScript and CSS.
+- The compatibility banner is written to render in IE11 and closes
+  itself after three seconds.
+- Markdown rendering is intentionally small and local; no browser
+  package manager is required.
+
+* License
+
+stoneChat is released under the WTFPL.
+
+Project:
+
+https://github.com/WaterRun/stoneChat

@@ -27,7 +27,7 @@
  * Reset / base
  * ------------------------------------------------------------------------- */
 body {
-  font-family: Tahoma, Verdana, sans-serif;
+  font-family: Tahoma, Verdana, Arial, sans-serif;
   font-size: 12px;
   background: #f4f1ea;
   color: #333;
@@ -49,7 +49,7 @@ a:visited {
 }
 
 h1, h2, h3, h4 {
-  font-family: Tahoma, Verdana, sans-serif;
+  font-family: Tahoma, Verdana, Arial, sans-serif;
   color: #333;
   margin: 0;
   padding: 0;
@@ -182,44 +182,56 @@ li {
   font-size: 11px;
 }
 
-.top-menu .row {
+.top-menu .top-model-row,
+.top-menu .top-meta-row {
   margin: 2px 0;
   overflow: hidden;
+  line-height: 20px;
 }
 
-.top-menu label {
-  display: inline-block;
-  width: 80px;
+.top-menu .top-label {
+  float: left;
+  width: 46px;
   color: #666;
   font-size: 11px;
+  line-height: 20px;
+}
+
+.top-menu .top-label-short {
+  width: 50px;
+  margin-left: 8px;
 }
 
 .top-menu .model-name {
   float: left;
-  width: 240px;
+  width: 270px;
   padding: 1px 4px;
   border: 1px solid #888;
   background: #ffffff;
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 11px;
   color: #333;
+  line-height: 16px;
+  height: 16px;
+  overflow: hidden;
 }
 
 .top-menu .tokens,
 .top-menu .timeout {
+  float: left;
   width: 60px;
   padding: 1px 2px;
   border: 1px solid #888;
   background: #ffffff;
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 11px;
+  line-height: 16px;
+  height: 16px;
 }
 
 .top-menu .badge-row {
-  margin-top: 4px;
-  padding: 2px 4px;
-  border: 1px solid #888;
-  background: #ffffff;
+  float: left;
+  margin-left: 8px;
   font-size: 11px;
 }
 
@@ -409,6 +421,28 @@ li {
   white-space: pre;
 }
 
+.chat-messages .msg-body .md-think {
+  margin: 4px 0 6px 0;
+  padding: 0;
+  border: 1px dotted #888;
+  background: #ffffe0;
+}
+
+.chat-messages .msg-body .md-think-title {
+  padding: 2px 4px;
+  border-bottom: 1px dotted #888;
+  background: #ece8df;
+  color: #666;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.chat-messages .msg-body .md-think-body {
+  padding: 4px;
+  color: #333;
+  white-space: pre-wrap;
+}
+
 .chat-messages .msg-actions {
   display: block;
   margin-top: 4px;
@@ -459,6 +493,8 @@ li {
   margin: 0;
   padding: 0;
   font-size: 11px;
+  height: 360px;
+  overflow: auto;
 }
 
 .history-list li {
@@ -510,12 +546,17 @@ li {
   color: #d4d0c8;
 }
 
-.history-list .history-delete {
+.history-list .history-delete,
+.history-list .history-rename {
   float: right;
   font-size: 10px;
   color: #8b1a1a;
   text-decoration: underline;
   margin-left: 4px;
+}
+
+.history-list .history-rename {
+  color: #003366;
 }
 
 /* -------------------------------------------------------------------------
@@ -749,13 +790,16 @@ select {
 }
 .user-mark {
   float: right;
-  clear: right;
-  margin-top: 2px;
+  margin-top: 0;
   padding: 1px 4px;
   border: 1px solid #808080;
   background: #ece9d8;
   color: #333333;
   font-size: 11px;
+  line-height: 16px;
+  height: 16px;
+  max-width: 120px;
+  overflow: hidden;
 }
 .chat-messages .msg-error {
   margin-top: 4px;
@@ -767,6 +811,12 @@ select {
   font-size: 11px;
 }
 .input-area .input-toolbar .send-button { font-weight: bold; }
+.history-search {
+  width: 148px;
+  margin: 0 0 4px 0;
+  padding: 2px 3px;
+  font-size: 11px;
+}
 .sidebar-footer {
   clear: both;
   padding: 4px 0 0 0;
@@ -805,6 +855,15 @@ select {
 .newchat-list .newchat-meta { font-size: 11px; color: #666; }
 .newchat-list .newchat-badges { margin-top: 2px; }
 .newchat-list .newchat-actions { margin-top: 4px; text-align: right; }
+
+.about-logo {
+  line-height: 48px;
+  font-size: 14px;
+  font-weight: bold;
+}
+.about-logo img {
+  margin-right: 8px;
+}
 
 /* -------------------------------------------------------------------------
  * Login page: large logo + slogan below the login form

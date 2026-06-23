@@ -16,6 +16,7 @@
  *
  * Public helpers (PHP 5.2, sc_-prefixed, include-guarded):
  *   sc_history_validate_id($id)         true iff id matches safe pattern
+ *   sc_history_set_user($name)          set current history username
  *   sc_history_dir()                    absolute HISTORY/ root
  *   sc_history_root($cfg)               absolute HISTORY/ root (alias)
  *   sc_history_chat_dir($chat_id)       absolute path to a chat dir
@@ -36,8 +37,8 @@
  *   sc_history_list($cfg)               all conversations, newest first
  *   sc_history_load_filtered($cfg,...)  subset by count/size/age
  *   sc_history_rmdir_recursive($dir)    recursive delete
- *   sc_history_recycle_via_com($path)   send to Recycle Bin (Win COM)
- *   sc_history_delete_to_recycle($id)   delete via recycle or rmdir
+ *   sc_history_recycle_via_com($path)   shell undo delete helper
+ *   sc_history_delete_to_recycle($id)   delete chat directory
  *   sc_history_delete($id, $cfg)        alias matching JSON contract
  *   sc_history_rename($id, $new_name)   update meta name field
  *   sc_history_create($prov, $model)    new conversation, returns id
@@ -61,6 +62,54 @@ if (!function_exists('sc_history_validate_id')) {
             return false;
         }
         return (bool)preg_match('/^[A-Za-z0-9_-]{1,64}$/', $chat_id);
+    }
+}
+
+/* sc_history_user_segment($username)
+ *   Convert a display username into a safe directory segment. */
+if (!function_exists('sc_history_user_segment')) {
+    function sc_history_user_segment($username) {
+        $text = trim((string)$username);
+        if ($text === '') {
+            return '';
+        }
+        $safe = preg_replace('/[^A-Za-z0-9_-]+/', '_', $text);
+        $safe = trim($safe, '_');
+        if ($safe === '') {
+            $safe = 'User';
+        }
+        if (strlen($safe) > 48) {
+            $safe = substr($safe, 0, 48);
+        }
+        return $safe;
+    }
+}
+
+/* sc_history_set_user($username)
+ *   Set the current request's history user. Empty keeps the legacy
+ *   shared root for command-line tools and old direct callers. */
+if (!function_exists('sc_history_set_user')) {
+    function sc_history_set_user($username) {
+        $GLOBALS['SC_HISTORY_USER'] = sc_history_user_segment($username);
+    }
+}
+
+/* sc_history_apply_user_root($root)
+ *   Append the current user segment to a HISTORY root when present. */
+if (!function_exists('sc_history_apply_user_root')) {
+    function sc_history_apply_user_root($root) {
+        if (!is_string($root) || $root === '') {
+            return '';
+        }
+        $user = '';
+        if (isset($GLOBALS['SC_HISTORY_USER'])
+            && is_string($GLOBALS['SC_HISTORY_USER'])) {
+            $user = $GLOBALS['SC_HISTORY_USER'];
+        }
+        if ($user === '') {
+            return $root;
+        }
+        return rtrim($root, '/\\') . DIRECTORY_SEPARATOR . $user;
     }
 }
 
@@ -95,6 +144,7 @@ if (!function_exists('sc_history_dir')) {
                 }
             }
         }
+        $root = sc_history_apply_user_root($root);
         if (!is_dir($root)) {
             if (!@mkdir($root, 0777, true)) {
                 return '';
@@ -121,6 +171,7 @@ if (!function_exists('sc_history_root')) {
                 }
             }
         }
+        $root = sc_history_apply_user_root($root);
         if (!is_dir($root)) {
             if (!@mkdir($root, 0777, true)) {
                 return '';
@@ -638,10 +689,8 @@ if (!function_exists('sc_history_rmdir_recursive')) {
 }
 
 /* sc_history_recycle_via_com($path)
- *   Move a path to the Windows Recycle Bin via Shell.Application COM.
- *   Uses NameSpace(10) (ssfBITBUCKET) + MoveHere with FOF_ALLOWUNDO
- *   (64) so the move is undoable. Returns false on non-Windows or
- *   when COM is unavailable. */
+ *   Move a path through Shell.Application with FOF_ALLOWUNDO.
+ *   Returns false when the shell helper is unavailable. */
 if (!function_exists('sc_history_recycle_via_com')) {
     function sc_history_recycle_via_com($path) {
         if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
@@ -659,8 +708,7 @@ if (!function_exists('sc_history_recycle_via_com')) {
             if (!$bin) {
                 return false;
             }
-            /* 64 = FOF_ALLOWUNDO -- required so the shell routes the
-             * move through the Recycle Bin instead of a plain delete. */
+            /* 64 = FOF_ALLOWUNDO. */
             $bin->MoveHere($path, 64);
             /* MoveHere is asynchronous on some shells; poll briefly. */
             for ($i = 0; $i < 20; $i++) {
@@ -677,8 +725,7 @@ if (!function_exists('sc_history_recycle_via_com')) {
 }
 
 /* sc_history_delete_to_recycle($chat_id)
- *   Delete a chat, sending it to the Recycle Bin on Windows.
- *   Falls back to a permanent recursive delete on failure. */
+ *   Delete a chat directory. */
 if (!function_exists('sc_history_delete_to_recycle')) {
     function sc_history_delete_to_recycle($chat_id) {
         $dir = sc_history_chat_dir($chat_id);

@@ -27,6 +27,7 @@ function makeDoc() {
     'send-button': new Node('a'),
     'stop-button': new Node('a'),
     'regenerate-button': new Node('a'),
+    'name-button': new Node('a'),
     'chat-messages': new Node('div')
   };
   return {
@@ -82,5 +83,127 @@ runCase({ send_shortcut: 'shift_enter' }, true, 1,
         'Shift+Enter发送 / Enter换行');
 runCase({ send_shortcut: 'shift_enter' }, false, 0,
         'Shift+Enter发送 / Enter换行');
+
+function runNameButtonCase() {
+  var document = makeDoc();
+  var calls = 0;
+  var savedCallback = null;
+  var context = {
+    window: {
+      SC: {
+        Api: {
+          nameChatAsync: function (chatId, message, cb) {
+            calls++;
+            if (chatId !== 'chat-one') {
+              throw new Error('chat id expected chat-one got ' + chatId);
+            }
+            savedCallback = cb;
+          },
+          getHistory: function () {
+            return { ok: true, data: { conversations: [] } };
+          }
+        },
+        App: {
+          renderHistoryList: function () {}
+        }
+      },
+      setInterval: function () { return 1; },
+      clearInterval: function () {}
+    },
+    document: document,
+    Date: Date
+  };
+  context.window.window = context.window;
+  context.window.document = document;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync('Pages/js/chat.js', 'utf8'), context);
+  context.window.SC.Chat.init({}, []);
+  context.window.SC.Chat.setActiveChatId('chat-one');
+  if (typeof document.nodes['name-button'].onclick !== 'function') {
+    throw new Error('name button should have onclick');
+  }
+  document.nodes['name-button'].onclick({});
+  if (calls !== 1) {
+    throw new Error('nameChatAsync expected 1 call got ' + calls);
+  }
+  if (document.nodes['name-button'].disabled !== true) {
+    throw new Error('name button should be disabled while naming');
+  }
+  if (document.nodes['name-button'].textContent !== '[Generating...]') {
+    throw new Error('name button should show progress');
+  }
+  savedCallback({ ok: true, data: { chat_name: 'XP Repair' } });
+  if (document.nodes['name-button'].disabled !== false) {
+    throw new Error('name button should be enabled after naming');
+  }
+  if (document.nodes['send-hint'].textContent !== 'Title updated') {
+    throw new Error('name status should report completion');
+  }
+}
+
+runNameButtonCase();
+
+function runJapaneseTitleCase() {
+  var document = makeDoc();
+  var savedCallback = null;
+  var context = {
+    window: {
+      SC: {
+        Api: {
+          nameChatAsync: function (chatId, message, cb) {
+            savedCallback = cb;
+          },
+          getHistory: function () {
+            return { ok: true, data: { conversations: [] } };
+          }
+        },
+        App: {
+          renderHistoryList: function () {}
+        }
+      },
+      setInterval: function () { return 1; },
+      clearInterval: function () {},
+      location: { search: '?lang=ja', pathname: '/Pages/chat.htm' }
+    },
+    document: document,
+    location: { search: '?lang=ja', pathname: '/Pages/chat.htm' },
+    XMLHttpRequest: function () {
+      this.open = function () {};
+      this.send = function () { this.status = 0; this.responseText = ''; };
+    },
+    ActiveXObject: function () { throw new Error('no activex'); },
+    Date: Date
+  };
+  context.window.window = context.window;
+  context.window.document = document;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync('Pages/js/i18n.js', 'utf8'), context);
+  context.window.SC.I18n.init(['zh-CN', 'zh-TW', 'en', 'ja'], 'zh-CN');
+  if (context.window.SC.I18n.getLang() !== 'ja') {
+    throw new Error('expected Japanese language state');
+  }
+  vm.runInContext(fs.readFileSync('Pages/js/chat.js', 'utf8'), context);
+  context.window.SC.Chat.init({}, []);
+  context.window.SC.Chat.setActiveChatId('chat-ja');
+  document.nodes['name-button'].onclick({});
+  if (document.nodes['name-button'].textContent !== '[生成中...]') {
+    throw new Error('Japanese title button progress text lost: '
+      + document.nodes['name-button'].textContent);
+  }
+  savedCallback({ ok: true, data: { chat_name: 'XP Repair' } });
+  if (context.window.SC.I18n.getLang() !== 'ja') {
+    throw new Error('generate title changed language state');
+  }
+  if (document.nodes['name-button'].textContent !== 'タイトル生成') {
+    throw new Error('Japanese title button text lost after callback: '
+      + document.nodes['name-button'].textContent);
+  }
+  if (document.nodes['send-hint'].textContent !== 'タイトルを更新しました') {
+    throw new Error('Japanese title status lost after callback: '
+      + document.nodes['send-hint'].textContent);
+  }
+}
+
+runJapaneseTitleCase();
 
 console.log('PASS');

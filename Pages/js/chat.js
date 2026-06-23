@@ -25,7 +25,7 @@
  *   handleEnterKey(e, callback)     Enter/Shift+Enter send shortcut
  *   scrollToBottom()                auto-scroll messages container
  *   clearMessages()                 empty the messages container
- *   deleteConversation(chatId)      drop a conversation (recycle bin)
+ *   deleteConversation(chatId)      delete a conversation
  *   setActiveChatId(chatId)         remember which chat is active
  *
  * The user-facing spec mandates a synchronous send via SC.Api.sendMessage.
@@ -72,7 +72,8 @@
         countdownSeconds: 0,    // elapsed seconds (UI label)
         config: null,           // SC.Chat.init(config) value
         providers: null,        // SC.Chat.init(providers) value
-        isStreaming: false      // true while a request is in flight
+        isStreaming: false,     // true while a request is in flight
+        isNaming: false         // true while title generation is in flight
     };
 
     /* ------------------------------------------------------------------
@@ -117,6 +118,22 @@
         } else {
             node.innerText = value;
         }
+    }
+
+    function sc_tr(key, fallback) {
+        if (window.SC && window.SC.I18n
+            && typeof window.SC.I18n.t === 'function') {
+            var text = window.SC.I18n.t(key);
+            if (text && text !== key) { return text; }
+        }
+        return fallback;
+    }
+
+    function sc_fmt(text, a, b) {
+        var out = String(text || '');
+        out = out.replace('{n}', String(a));
+        out = out.replace('{m}', String(b));
+        return out;
     }
 
     /* ------------------------------------------------------------------
@@ -317,6 +334,17 @@
         parent.appendChild(pre);
     }
 
+    function sc_appendThinkBlock(parent, lines) {
+        if (!lines || lines.length === 0) { return; }
+        var box = sc_makeEl('div', 'md-think', null);
+        var title = sc_makeEl('div', 'md-think-title', 'think');
+        var body = sc_makeEl('div', 'md-think-body', null);
+        sc_appendInline(body, lines.join('\n'));
+        box.appendChild(title);
+        box.appendChild(body);
+        parent.appendChild(box);
+    }
+
     function sc_renderMarkdown(parent, content) {
         sc_emptyNode(parent);
         var text = String(content || '');
@@ -324,11 +352,14 @@
         var lines = text.split('\n');
         var para = [];
         var inCode = false;
+        var inThink = false;
         var codeLines = [];
+        var thinkLines = [];
         var i;
 
         for (i = 0; i < lines.length; i++) {
             var line = lines[i];
+            var tag = line.replace(/^\s+|\s+$/g, '').toLowerCase();
             if (line.indexOf('```') === 0) {
                 if (inCode) {
                     sc_appendCodeBlock(parent, codeLines);
@@ -343,6 +374,23 @@
             }
             if (inCode) {
                 codeLines.push(line);
+                continue;
+            }
+            if (tag === '<think>') {
+                sc_appendParagraph(parent, para);
+                para = [];
+                inThink = true;
+                thinkLines = [];
+                continue;
+            }
+            if (tag === '</think>') {
+                sc_appendThinkBlock(parent, thinkLines);
+                thinkLines = [];
+                inThink = false;
+                continue;
+            }
+            if (inThink) {
+                thinkLines.push(line);
                 continue;
             }
             if (/^\s*$/.test(line)) {
@@ -382,6 +430,9 @@
         }
         if (inCode) {
             sc_appendCodeBlock(parent, codeLines);
+        }
+        if (inThink) {
+            sc_appendThinkBlock(parent, thinkLines);
         }
         sc_appendParagraph(parent, para);
     }
@@ -454,11 +505,9 @@
             : SC_DEFAULT_MAX_CHARS;
         var len = (text === null || text === undefined) ? 0
             : String(text).length;
-        sc_setText(node, '\u5b57\u6570: ' + len + ' / ' + limit);
-        // "字数: N / M" (Chinese "character count"); ASCII-safe fallback:
-        if (node.textContent === '' && typeof node.innerText !== 'undefined') {
-            sc_setText(node, 'Chars: ' + len + ' / ' + limit);
-        }
+        sc_setText(node, sc_fmt(sc_tr('chat.charCount',
+                                      '\u5b57\u6570: {n} / {m}'),
+                                len, limit));
     }
 
     /* ------------------------------------------------------------------
@@ -468,12 +517,9 @@
     function sc_renderCountdown(seconds) {
         var node = sc_findCountdownNode();
         if (!node) { return; }
-        sc_setText(node, '\u23f1 \u7b49\u5f85: ' + seconds + '\u79d2');
-        // "⏱ 等待: N 秒" (timer / waiting / seconds); the IE6 font may not
-        // render U+23F1, so we also expose an ASCII variant below.
-        if (node.textContent === '' && typeof node.innerText !== 'undefined') {
-            sc_setText(node, 'Wait: ' + seconds + 's');
-        }
+        sc_setText(node, sc_fmt(sc_tr('chat.wait',
+                                      '\u7b49\u5f85: {n}\u79d2'),
+                                seconds, ''));
     }
 
     function sc_startCountdown() {
@@ -503,9 +549,11 @@
             mode = 'shift_enter';
         }
         if (mode === 'shift_enter') {
-            sc_setText(node, 'Shift+Enter\u53d1\u9001 / Enter\u6362\u884c');
+            sc_setText(node, sc_tr('chat.sendHintShift',
+                                   'Shift+Enter\u53d1\u9001 / Enter\u6362\u884c'));
         } else {
-            sc_setText(node, 'Enter\u53d1\u9001 / Shift+Enter\u6362\u884c');
+            sc_setText(node, sc_tr('chat.sendHintEnter',
+                                   'Enter\u53d1\u9001 / Shift+Enter\u6362\u884c'));
         }
     }
 
@@ -519,18 +567,97 @@
         var sendBtn = sc_findButton('send-button', 'send-button');
         var stopBtn = sc_findButton('stop-button', 'stop-button');
         var regenBtn = sc_findButton('regenerate-button', 'regenerate-button');
+        var nameBtn = sc_findButton('name-button', 'name-button');
         if (input) { input.disabled = state.isStreaming; }
         if (sendBtn) { sendBtn.disabled = state.isStreaming; }
         if (regenBtn) { regenBtn.disabled = state.isStreaming; }
+        if (nameBtn) { nameBtn.disabled = state.isStreaming || state.isNaming; }
         if (stopBtn) { stopBtn.disabled = !state.isStreaming; }
     }
 
     function sc_renderError(bodyNode, message) {
         if (!bodyNode) { return; }
         var box = sc_makeEl('div', 'msg-error', '');
-        sc_setText(box, '[Error] ' + String(message || 'unknown_error'));
+        sc_setText(box, '[' + sc_tr('chat.errorLabel', 'Error') + '] '
+                   + String(message || 'unknown_error'));
         bodyNode.appendChild(box);
         sc_scrollToBottom();
+    }
+
+    function sc_refreshHistoryActive(chatId) {
+        if (!window.SC || !window.SC.Api || !window.SC.App
+            || typeof window.SC.Api.getHistory !== 'function'
+            || typeof window.SC.App.renderHistoryList !== 'function') {
+            return;
+        }
+        try {
+            var h = window.SC.Api.getHistory();
+            var rows = (h && h.ok && h.data && h.data.conversations)
+                     ? h.data.conversations : [];
+            window.SC.App.renderHistoryList(rows);
+            var list = document.getElementById('sc-history-list');
+            if (list && chatId) {
+                var items = list.getElementsByTagName('li');
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    if (item.getAttribute('data-id') === chatId) {
+                        item.className = 'history-active';
+                    }
+                }
+            }
+        } catch (err) { /* ignore */ }
+    }
+
+    function sc_setNameButtonBusy(flag) {
+        var btn = sc_findButton('name-button', 'name-button');
+        if (!btn) { return; }
+        btn.disabled = !!flag || state.isStreaming;
+        if (flag) {
+            sc_setText(btn, sc_tr('chat.generateTitleBusy',
+                                  '[Generating...]'));
+        } else {
+            sc_setText(btn, sc_tr('chat.generateTitle', '[Title]'));
+        }
+    }
+
+    function sc_setNameStatus(key, fallback) {
+        var node = sc_findSendHintNode();
+        if (!node) { return; }
+        sc_setText(node, sc_tr(key, fallback));
+    }
+
+    function sc_generateTitle() {
+        var chatId = state.lastChatId || '';
+        if (!chatId) {
+            sc_setNameStatus('chat.noActiveChat', 'No active chat.');
+            return { ok: false, error: 'no_active_chat' };
+        }
+        if (state.isStreaming || state.isNaming) {
+            return { ok: false, error: 'busy' };
+        }
+        if (!window.SC || !window.SC.Api
+            || typeof window.SC.Api.nameChatAsync !== 'function') {
+            sc_setNameStatus('chat.generateTitleFailed',
+                             'Generate title failed');
+            return { ok: false, error: 'api_unavailable' };
+        }
+        state.isNaming = true;
+        sc_setNameButtonBusy(true);
+        sc_setNameStatus('chat.generateTitleBusy', '[Generating...]');
+        window.SC.Api.nameChatAsync(chatId, state.lastUserMessage || '',
+            function (r) {
+                state.isNaming = false;
+                sc_setNameButtonBusy(false);
+                if (r && r.ok && r.data && r.data.chat_name) {
+                    sc_refreshHistoryActive(chatId);
+                    sc_setNameStatus('chat.generateTitleDone',
+                                     'Title updated');
+                } else {
+                    sc_setNameStatus('chat.generateTitleFailed',
+                                     'Generate title failed');
+                }
+            });
+        return { ok: true };
     }
 
     /* ------------------------------------------------------------------
@@ -618,10 +745,8 @@
                 } else {
                     var errMsg = (result && result.error) || 'unknown_error';
                     if (errMsg === 'abort' || (xhr && xhr.status === 0)) {
-                        errMsg = 'Connection interrupted. Streaming has been stopped.';
-                        if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
-                            errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
-                        }
+                        errMsg = sc_tr('chat.streamWarning',
+                                       'Connection interrupted. Streaming has been stopped.');
                     }
                     sc_renderError(bodyNode, errMsg);
                 }
@@ -700,10 +825,8 @@
                 } else {
                     var errMsg = (result && result.error) || 'unknown_error';
                     if (errMsg === 'abort' || (xhr && xhr.status === 0)) {
-                        errMsg = 'Connection interrupted. Streaming has been stopped.';
-                        if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
-                            errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
-                        }
+                        errMsg = sc_tr('chat.streamWarning',
+                                       'Connection interrupted. Streaming has been stopped.');
                     }
                     sc_renderError(bodyNode, errMsg);
                 }
@@ -717,7 +840,8 @@
     /* ------------------------------------------------------------------
      * Public: handleEnterKey(e, callback)
      * Default: Enter sends, Shift+Enter inserts a newline.
-     * If [ui] send_shortcut = shift_enter, the two are swapped.
+     * If the current user has send_shortcut = shift_enter, the two
+     * are swapped.
      * Returns true if the event was consumed.
      * ------------------------------------------------------------------ */
 
@@ -771,6 +895,7 @@
         var sendBtn = sc_findButton('send-button', 'send-button');
         var stopBtn = sc_findButton('stop-button', 'stop-button');
         var regenBtn = sc_findButton('regenerate-button', 'regenerate-button');
+        var nameBtn = sc_findButton('name-button', 'name-button');
 
         if (input) {
             sc_attachEvent(input, 'keydown', function (e) {
@@ -795,6 +920,10 @@
         }
         if (regenBtn) {
             sc_attachEvent(regenBtn, 'click', sc_regenerate);
+        }
+        if (nameBtn) {
+            sc_attachEvent(nameBtn, 'click', sc_generateTitle);
+            sc_setNameButtonBusy(false);
         }
         return input;
     }
@@ -891,6 +1020,7 @@
         sendMessage: sc_sendMessage,
         stop: sc_stop,
         regenerate: sc_regenerate,
+        generateTitle: sc_generateTitle,
         startCountdown: sc_startCountdown,
         stopCountdown: sc_stopCountdown,
         updateCharCount: sc_updateCharCount,

@@ -148,7 +148,28 @@ for /f "tokens=5" %%P in ('type "%~dp0.tmp\netstat_match.tmp" 2^>nul') do (
 del /q "%~dp0.tmp\netstat.tmp" "%~dp0.tmp\netstat_list.tmp" "%~dp0.tmp\netstat_match.tmp" 2>nul
 
 if not "!CONFLICT_PIDS!"=="" (
-    echo        [WARN] Port !SC_PORT! is already in use by PID(s):!CONFLICT_PIDS!
+    echo        [WARN] Port !SC_PORT! is already in use by PID^(s^):!CONFLICT_PIDS!
+    set "SC_GHOST_PIDS="
+    for %%K in (!CONFLICT_PIDS!) do (
+        if not "%%K"=="0" if not "%%K"=="4" (
+            tasklist /FI "PID eq %%K" /NH 2>nul | findstr /R /C:"[ ][ ]*%%K[ ]" >nul
+            if errorlevel 1 set "SC_GHOST_PIDS=!SC_GHOST_PIDS! %%K "
+        )
+    )
+    if not "!SC_GHOST_PIDS!"=="" (
+        echo        [WARN] Port !SC_PORT! has stale listener PID^(s^):!SC_GHOST_PIDS!
+        echo               Windows reports the port as busy, but no matching process exists.
+        call :SC_FIND_FREE_PORT "!SC_PORT!"
+        if defined SC_ALT_PORT (
+            echo        [INFO] Using fallback port !SC_ALT_PORT! for this run.
+            set "SC_PORT=!SC_ALT_PORT!"
+            set "PORT_OK=1"
+        ) else (
+            echo        [FAIL] Port !SC_PORT! is unusable and no fallback port was found.
+            set /a "ERR_COUNT+=1"
+        )
+        goto :AFTER_PORT_CHECK
+    )
     set /p "KILL_CHOICE=       Do you want to automatically kill this process? (y/n): "
     if /i "!KILL_CHOICE!"=="y" (
         set "KILL_FAILED=0"
@@ -178,16 +199,31 @@ if not "!CONFLICT_PIDS!"=="" (
             )
         )
         if "!KILL_FAILED!"=="1" (
-            set /a "ERR_COUNT+=1"
-            set "PORT_OK=0"
+            call :SC_FIND_FREE_PORT "!SC_PORT!"
+            if defined SC_ALT_PORT (
+                echo        [INFO] Using fallback port !SC_ALT_PORT! for this run.
+                set "SC_PORT=!SC_ALT_PORT!"
+                set "PORT_OK=1"
+            ) else (
+                set /a "ERR_COUNT+=1"
+                set "PORT_OK=0"
+            )
             goto :AFTER_PORT_CHECK
         )
         :: Wait a moment for the port to be freed
         ping 127.0.0.1 -n 2 >nul
         goto :PORT_CHECK_LOOP
     ) else (
-        echo        [FAIL] Port !SC_PORT! is in use and was not killed.
-        set /a "ERR_COUNT+=1"
+        call :SC_FIND_FREE_PORT "!SC_PORT!"
+        if defined SC_ALT_PORT (
+            echo        [INFO] Port !SC_PORT! is in use and was not killed.
+            echo        [INFO] Using fallback port !SC_ALT_PORT! for this run.
+            set "SC_PORT=!SC_ALT_PORT!"
+            set "PORT_OK=1"
+        ) else (
+            echo        [FAIL] Port !SC_PORT! is in use and no fallback port was found.
+            set /a "ERR_COUNT+=1"
+        )
     )
 ) else (
     echo        [ OK ] Port !SC_PORT! is free.
@@ -321,3 +357,18 @@ pause
 endlocal
 endlocal
 exit /b 0
+
+:SC_FIND_FREE_PORT
+set "SC_ALT_PORT="
+set "SC_FIND_START=%~1"
+echo(!SC_FIND_START!| findstr /R "^[0-9][0-9]*$" >nul
+if errorlevel 1 set "SC_FIND_START=9999"
+set /a "SC_CANDIDATE=SC_FIND_START+1"
+set /a "SC_LAST=SC_FIND_START+20"
+for /L %%Q in (!SC_CANDIDATE!,1,!SC_LAST!) do (
+    if not defined SC_ALT_PORT (
+        netstat -ano | findstr /C:":%%Q " | findstr /C:"LISTENING" >nul
+        if errorlevel 1 set "SC_ALT_PORT=%%Q"
+    )
+)
+goto :eof

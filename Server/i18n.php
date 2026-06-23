@@ -14,9 +14,8 @@
  *
  * Resolution order for the current language (sc_i18n_init):
  *   1. $_GET['lang']
- *   2. $_COOKIE['sc_lang']
- *   3. CONF.ini [i18n] default = ...
- *   4. The $default_lang argument passed to sc_i18n_init()
+ *   2. CONF.ini [i18n] default = ...
+ *   3. The $default_lang argument passed to sc_i18n_init()
  *
  * Public helpers (sc_-prefixed, function_exists guarded):
  *   sc_i18n_supported_langs()           fixed list of supported codes
@@ -124,8 +123,8 @@ if (!function_exists('sc_available_langs')) {
 
 /* sc_i18n_current_lang($default)
  *   Resolve the current language code. Memoized per request.
- *   Priority: $_GET['lang'] > $_COOKIE['sc_lang'] > CONF.ini
- *   [i18n] default > $default > 'en'. */
+ *   Priority: $_GET['lang'] > CONF.ini [i18n] default >
+ *   $default > 'en'. */
 if (!function_exists('sc_i18n_current_lang')) {
     function sc_i18n_current_lang($default) {
         static $resolved = null;
@@ -138,12 +137,7 @@ if (!function_exists('sc_i18n_current_lang')) {
         if (isset($_GET['lang']) && is_string($_GET['lang'])) {
             $lang = $_GET['lang'];
         }
-        /* 2. Cookie sc_lang */
-        if ($lang === '' && isset($_COOKIE['sc_lang'])
-            && is_string($_COOKIE['sc_lang'])) {
-            $lang = $_COOKIE['sc_lang'];
-        }
-        /* 3. CONF.ini [i18n] default, then $default arg */
+        /* 2. CONF.ini [i18n] default, then $default arg */
         if ($lang === '') {
             $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..'
                  . DIRECTORY_SEPARATOR . 'CONF.ini';

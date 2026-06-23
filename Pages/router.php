@@ -42,6 +42,32 @@ if (!function_exists('sc_router_is_under')) {
     }
 }
 
+if (!function_exists('sc_router_no_cache')) {
+    function sc_router_no_cache() {
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: Sat, 1 Jan 2000 00:00:00 GMT');
+    }
+}
+
+if (!function_exists('sc_router_content_type')) {
+    function sc_router_content_type($ext) {
+        if ($ext === '.htm' || $ext === '.html') {
+            return 'text/html; charset=UTF-8';
+        }
+        if ($ext === '.js') {
+            return 'text/javascript; charset=UTF-8';
+        }
+        if ($ext === '.css') {
+            return 'text/css; charset=UTF-8';
+        }
+        if ($ext === '.txt' || $ext === '.org') {
+            return 'text/plain; charset=UTF-8';
+        }
+        return '';
+    }
+}
+
 $sc_boot_check = dirname(__FILE__) . '/../Server/boot_check.php';
 if (is_file($sc_boot_check)) {
     require_once $sc_boot_check;
@@ -101,8 +127,19 @@ $sc_is_super_modern = (strpos($sc_path_for_check,
 $sc_is_html_page    = ($sc_path_for_check === '/'
                       || preg_match('/\.(htm|html)$/i',
                                     $sc_path_for_check));
+$sc_html_exists     = false;
+if ($sc_path_for_check === '/') {
+    $sc_html_exists = true;
+} elseif ($sc_is_html_page) {
+    $sc_html_file = realpath('.' . $sc_path_for_check);
+    if ($sc_html_file !== false
+        && sc_router_is_under($sc_html_file, 'Pages')
+        && is_file($sc_html_file) && is_readable($sc_html_file)) {
+        $sc_html_exists = true;
+    }
+}
 if ($sc_is_modern && !$sc_already_seen
-    && $sc_is_html_page && !$sc_is_super_modern) {
+    && $sc_is_html_page && $sc_html_exists && !$sc_is_super_modern) {
     $sc_next = $sc_path_for_check;
     if (!empty($_SERVER['QUERY_STRING'])) {
         $sc_next .= '?' . $_SERVER['QUERY_STRING'];
@@ -121,6 +158,7 @@ $path = '/' . ltrim($path, '/');
 
 /* 1) Root: redirect to Pages entry. */
 if ($path === '/' || $path === '') {
+    sc_router_no_cache();
     header('Location: /Pages/index.htm');
     return true;
 }
@@ -135,6 +173,13 @@ if (strpos($path, '/Pages/') === 0) {
             /* execute in its own dir so dirname(__FILE__) works. */
             chdir(dirname($file));
             require $file;
+            return true;
+        }
+        $ctype = sc_router_content_type($ext);
+        if ($ctype !== '') {
+            header('Content-Type: ' . $ctype);
+            sc_router_no_cache();
+            readfile($file);
             return true;
         }
         return false; /* let PHP serve as static. */

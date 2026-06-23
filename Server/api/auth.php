@@ -298,9 +298,16 @@ if (!function_exists('sc_api_auth_handle_login')) {
         $login = sc_auth_login($password, $cfg);
         if (!empty($login['ok'])) {
             sc_api_auth_set_cookie($cfg, $login);
+            $lang = sc_i18n_current_lang('en');
+            if (function_exists('sc_auth_user_default_lang')
+                && isset($login['username'])) {
+                $lang = sc_auth_user_default_lang(
+                    $cfg, (string)$login['username'], $lang
+                );
+            }
             return array(
                 'ok'       => true,
-                'lang'     => sc_i18n_current_lang('en'),
+                'lang'     => $lang,
                 'username' => isset($login['username'])
                               ? (string)$login['username'] : 'User',
             );

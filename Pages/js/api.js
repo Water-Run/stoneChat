@@ -175,6 +175,14 @@
         return null;
     }
 
+    function sc_cacheBustUrl(method, url) {
+        if (String(method).toUpperCase() !== 'GET') {
+            return url;
+        }
+        var sep = (url.indexOf('?') === -1) ? '?' : '&';
+        return url + sep + '_sc=' + (new Date()).getTime();
+    }
+
     /* ------------------------------------------------------------------
      * Low-level synchronous request
      *
@@ -192,7 +200,7 @@
             return { ok: false, data: null, error: 'xhr_unavailable' };
         }
 
-        var url = SC_API_BASE + endpoint;
+        var url = sc_cacheBustUrl(method, SC_API_BASE + endpoint);
         var hasBody = body !== null && body !== undefined;
         var payload = hasBody ? sc_jsonStringify(body) : null;
 
@@ -209,6 +217,12 @@
             // Same-origin requests send cookies by default; we add Accept
             // explicitly so the server can branch on streaming vs JSON.
             xhr.setRequestHeader('Accept', 'application/json');
+            if (String(method).toUpperCase() === 'GET') {
+                xhr.setRequestHeader('Cache-Control', 'no-cache');
+                xhr.setRequestHeader('Pragma', 'no-cache');
+                xhr.setRequestHeader('If-Modified-Since',
+                                     'Sat, 1 Jan 2000 00:00:00 GMT');
+            }
         } catch (e) {
             // Some old IE builds reject setRequestHeader for certain verbs.
             // Carry on: the defaults are acceptable for our endpoints.
@@ -492,7 +506,7 @@
         },
 
         // DELETE /Server/api/history.php?id=<chatId>
-        //   chatId - conversation id to remove (Recycle Bin on Windows)
+        //   chatId - conversation id to remove
         deleteChat: function (chatId) {
             return sc_request('DELETE', 'history.php?id=' + chatId, null);
         },
@@ -529,6 +543,14 @@
             return sc_request_async('POST', 'chat.php',
                                { action: 'send', conversation_id: chatId, message: message },
                                onChunk, onComplete);
+        },
+
+        // POST /Server/api/chat.php action=name, asynchronous.
+        // Used during streaming so the UI thread is never blocked.
+        nameChatAsync: function (chatId, message, onComplete) {
+            return sc_request_async('POST', 'chat.php',
+                               { action: 'name', chat_id: chatId, message: message },
+                               null, onComplete);
         },
 
         regenerateChatStream: function (chatId, onChunk, onComplete) {

@@ -244,8 +244,8 @@ if (!function_exists('sc_api_history_request_method')) {
 if (!function_exists('sc_api_history_default_title')) {
     function sc_api_history_default_title() {
         if (function_exists('sc_t')) {
-            $t = sc_t('new_chat', '');
-            if (is_string($t) && $t !== '' && $t !== 'new_chat') {
+            $t = sc_t('chat.newChat', '');
+            if (is_string($t) && $t !== '' && $t !== 'chat.newChat') {
                 return $t;
             }
         }
@@ -394,8 +394,7 @@ if (!function_exists('sc_api_history_handle_set_system')) {
 }
 
 /* sc_api_history_handle_delete($chat_id)
- *   Delete a conversation (Recycle Bin on Windows, recursive
- *   unlink elsewhere). */
+ *   Delete a conversation. */
 if (!function_exists('sc_api_history_handle_delete')) {
     function sc_api_history_handle_delete($chat_id) {
         if (!function_exists('sc_history_delete_to_recycle')) {
@@ -413,8 +412,14 @@ if (!function_exists('sc_api_history_handle_delete')) {
 $cfg = sc_api_history_load_cfg();
 
 /* 1. Auth gate. Every action below assumes a valid session. */
-if (!sc_api_history_is_authorized($cfg)) {
+$auth_ctx = sc_api_history_auth_context($cfg);
+if (empty($auth_ctx['ok'])) {
     sc_api_history_emit(401, array('ok' => false, 'error' => 'auth_required'));
+}
+if (function_exists('sc_history_set_user')) {
+    $auth_user = isset($auth_ctx['username'])
+                 ? (string)$auth_ctx['username'] : '';
+    sc_history_set_user($auth_user);
 }
 
 $method = sc_api_history_request_method();

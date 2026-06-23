@@ -247,10 +247,9 @@ if (!function_exists('sc_config_fatal_errors')) {
                 $fatal[] = $code;
                 continue;
             }
-            if (preg_match('/^User .+_(active|allow_config)_invalid$/', $code)
-                || preg_match('/^User .+_allow_model_missing:/', $code)
-                || preg_match('/^User .+_allow_model_inactive:/', $code)
-                || preg_match('/^User .+_allow_models_empty$/', $code)
+            if (preg_match('/^User .+_(active|can_edit_config)_invalid$/', $code)
+                || preg_match('/^User .+_excluded_model_missing:/', $code)
+                || preg_match('/^User .+_excluded_model_inactive:/', $code)
                 || preg_match('/^Model .+_(active_invalid|missing_api_base|missing_api_key|api_key_is_placeholder|invalid_type|missing_model)$/', $code)
                 || preg_match('/^Provider [0-9]+_section_not_supported$/', $code)) {
                 $fatal[] = $code;
@@ -423,26 +422,24 @@ if (!function_exists('sc_validate_config')) {
                 && !sc_config_bool_value_valid($section_data['active'])) {
                 $errors[] = $section . '_active_invalid';
             }
-            if (isset($section_data['allow_config'])
-                && !sc_config_bool_value_valid($section_data['allow_config'])) {
-                $errors[] = $section . '_allow_config_invalid';
+            if (isset($section_data['can_edit_config'])
+                && !sc_config_bool_value_valid($section_data['can_edit_config'])) {
+                $errors[] = $section . '_can_edit_config_invalid';
             }
-            $allow_models = isset($section_data['allow_models'])
-                            ? trim((string)$section_data['allow_models']) : '';
-            if ($allow_models === '') {
-                $errors[] = $section . '_allow_models_empty';
-            } elseif ($allow_models !== '*') {
-                $parts = explode(',', $allow_models);
+            $excluded_models = isset($section_data['excluded_models'])
+                               ? trim((string)$section_data['excluded_models']) : '';
+            if ($excluded_models !== '' && $excluded_models !== '*') {
+                $parts = explode(',', $excluded_models);
                 for ($i = 0; $i < count($parts); $i++) {
                     $model_name = trim((string)$parts[$i]);
                     if ($model_name === '') {
                         continue;
                     }
                     if (!isset($known_models[$model_name])) {
-                        $errors[] = $section . '_allow_model_missing:'
+                        $errors[] = $section . '_excluded_model_missing:'
                                   . $model_name;
                     } elseif (!isset($active_models[$model_name])) {
-                        $errors[] = $section . '_allow_model_inactive:'
+                        $errors[] = $section . '_excluded_model_inactive:'
                                   . $model_name;
                     }
                 }

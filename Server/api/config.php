@@ -7,7 +7,7 @@
  *   GET                  -> sanitized public config. The payload
  *                          contains ONLY non-sensitive fields:
  *                            title         (from [ui].title)
- *                            default_lang  (from [ui].default_lang)
+ *                            default_lang  (current user, or [ui] fallback)
  *                            theme         (from [ui].theme)
  *                            providers     (list of {id,label,type,model})
  *                            langs         (supported language codes)
@@ -131,6 +131,22 @@ if (!function_exists('sc_api_config_cookie_context')) {
     }
 }
 
+if (!function_exists('sc_api_config_runtime_info')) {
+    function sc_api_config_runtime_info() {
+        $timezone = '';
+        if (function_exists('date_default_timezone_get')) {
+            $timezone = @date_default_timezone_get();
+        }
+        return array(
+            'modern_windows' => function_exists('sc_is_modern_windows')
+                                ? sc_is_modern_windows() : false,
+            'php_version'    => PHP_VERSION,
+            'os'             => PHP_OS,
+            'timezone'       => $timezone,
+        );
+    }
+}
+
 /* sc_api_config_build_payload()
  *   Build the GET /api/config response payload. */
 if (!function_exists('sc_api_config_build_payload')) {
@@ -164,18 +180,22 @@ if (!function_exists('sc_api_config_build_payload')) {
                 $allow_online_editor = $flag;
             }
         }
-        $send_shortcut = 'enter';
-        if (isset($cfg['ui']['send_shortcut'])
-            && strtolower((string)$cfg['ui']['send_shortcut']) === 'shift_enter') {
-            $send_shortcut = 'shift_enter';
-        }
         $ctx = sc_api_config_cookie_context($cfg);
         $username = '';
         $can_edit_config = false;
+        $send_shortcut = 'enter';
         if (!empty($ctx['ok'])) {
             $username = isset($ctx['username']) ? (string)$ctx['username'] : '';
             if (function_exists('sc_auth_can_edit_config')) {
                 $can_edit_config = sc_auth_can_edit_config($cfg, $username);
+            }
+            if (function_exists('sc_auth_user_send_shortcut')) {
+                $send_shortcut = sc_auth_user_send_shortcut($cfg, $username);
+            }
+            if (function_exists('sc_auth_user_default_lang')) {
+                $default_lang = sc_auth_user_default_lang(
+                    $cfg, $username, $default_lang
+                );
             }
         }
         return array(
@@ -191,6 +211,7 @@ if (!function_exists('sc_api_config_build_payload')) {
                                      ),
             'langs'               => sc_i18n_supported_langs(),
             'auth_enabled'        => sc_api_config_resolve_auth_enabled($cfg),
+            'runtime'             => sc_api_config_runtime_info(),
         );
     }
 }
@@ -218,6 +239,9 @@ if (!function_exists('sc_api_config_emit')) {
     function sc_api_config_emit($payload) {
         if (!headers_sent()) {
             header('Content-Type: application/json; charset=UTF-8');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: Sat, 1 Jan 2000 00:00:00 GMT');
         }
         $json = json_encode($payload);
         if ($json === false) {

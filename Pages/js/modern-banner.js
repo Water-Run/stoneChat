@@ -26,12 +26,6 @@
     return;
   }
 
-  // Load Outfit Google Font for modern look
-  var fontLink = document.createElement('link');
-  fontLink.rel = 'stylesheet';
-  fontLink.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap';
-  document.getElementsByTagName('head')[0].appendChild(fontLink);
-
   // Ingest modern styles
   var style = document.createElement('style');
   style.type = 'text/css';
@@ -39,7 +33,7 @@
     '@keyframes scSlideDown { from { transform: translate(-50%, -40px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }' +
     '@keyframes scGlow { 0% { box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5), 0 0 10px rgba(99, 102, 241, 0.2); } 50% { box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5), 0 0 20px rgba(99, 102, 241, 0.4), 0 0 30px rgba(244, 63, 94, 0.15); } 100% { box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5), 0 0 10px rgba(99, 102, 241, 0.2); } }' +
     '.sc-modern-banner {' +
-    '  font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;' +
+    '  font-family: Tahoma, Verdana, SimSun, NSimSun, Arial, sans-serif;' +
     '  position: fixed;' +
     '  top: 16px;' +
     '  left: 50%;' +
