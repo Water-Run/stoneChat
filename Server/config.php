@@ -171,6 +171,14 @@ if (!function_exists('sc_load_providers')) {
         $raw_scalars = sc_load_provider_raw_scalars($ini_path);
         $providers = array();
         foreach ($buckets as $provider_no => $section_data) {
+            $active_text = isset($section_data['active'])
+                           ? strtolower(trim((string)$section_data['active']))
+                           : '1';
+            if ($active_text === '0' || $active_text === ''
+                || $active_text === 'false' || $active_text === 'no'
+                || $active_text === 'off') {
+                continue;
+            }
             $raw = isset($raw_scalars[$provider_no])
                    && is_array($raw_scalars[$provider_no])
                    ? $raw_scalars[$provider_no] : array();
@@ -189,6 +197,10 @@ if (!function_exists('sc_load_providers')) {
             $providers[] = array(
                 'id'       => isset($section_data['id'])
                               ? (string)$section_data['id'] : '',
+                'active'   => isset($section_data['active'])
+                              ? (string)$section_data['active'] : '1',
+                'model_id' => isset($section_data['model_id'])
+                              ? (string)$section_data['model_id'] : '',
                 'label'    => isset($section_data['label'])
                               ? (string)$section_data['label'] : '',
                 'type'     => isset($section_data['type'])
@@ -211,7 +223,7 @@ if (!function_exists('sc_load_providers')) {
 /* sc_config_fatal_errors($errors)
  *   Filter sc_validate_config() output to errors that must block
  *   startup. Provider-specific problems are shown in the provider UI;
- *   stunnel/cacert paths are checked by RUN.bat with better hints. */
+ *   stunnel/cacert paths are checked by RUN.cmd with better hints. */
 if (!function_exists('sc_config_fatal_errors')) {
     function sc_config_fatal_errors($errors) {
         if (!is_array($errors)) {
@@ -221,16 +233,34 @@ if (!function_exists('sc_config_fatal_errors')) {
         $fatal_map = array(
             'config_not_array' => true,
             'missing_server_port' => true,
-            'missing_auth_password' => true,
-            'auth_password_is_placeholder' => true,
+            'missing_auth_user' => true,
+            'auth_user_password_is_placeholder' => true,
         );
         foreach ($errors as $err) {
             $code = (string)$err;
             if (isset($fatal_map[$code])) {
                 $fatal[] = $code;
+                continue;
+            }
+            if (preg_match('/^User .+_(active|allow_config)_invalid$/', $code)
+                || preg_match('/^User .+_allow_model_missing:/', $code)
+                || preg_match('/^User .+_allow_models_empty$/', $code)
+                || preg_match('/^Provider [0-9]+_(active_invalid|missing_api_key|api_key_is_placeholder|invalid_type)$/', $code)
+                || preg_match('/^Provider [0-9]+_model_id_missing:/', $code)
+                || preg_match('/^Provider [0-9]+_missing_model_id$/', $code)) {
+                $fatal[] = $code;
             }
         }
         return $fatal;
+    }
+}
+
+if (!function_exists('sc_config_bool_value_valid')) {
+    function sc_config_bool_value_valid($value) {
+        $v = strtolower(trim((string)$value));
+        return ($v === '' || $v === '1' || $v === '0' || $v === 'true'
+            || $v === 'false' || $v === 'yes' || $v === 'no'
+            || $v === 'on' || $v === 'off');
     }
 }
 
@@ -326,10 +356,10 @@ if (!function_exists('sc_validate_path_resolve')) {
  *
  *   Required:
  *     - [server].port       (non-empty)
- *     - [auth].password     (non-empty AND not a placeholder)
+ *     - at least one [User NAME].password (non-empty, not a placeholder)
  *
- *   Soft checks (reported but not fatal here; the installer/UI may
- *   downgrade them to warnings):
+ *   Soft checks (reported but not fatal here; RUN.cmd gives some of
+ *   them clearer operator hints):
  *     - [paths].stunnel / [paths].ca_cert: file exists when set
  *     - each [Provider N].api_key is non-placeholder
  *     - each [Provider N].type is one of: "openai", "anthropic" */
@@ -346,21 +376,66 @@ if (!function_exists('sc_validate_config')) {
         if (!$has_port) {
             $errors[] = 'missing_server_port';
         }
-        /* [auth].password must be present, non-empty, not a placeholder. */
-        $has_pass = false;
-        $pass_placeholder = true;
-        if (isset($cfg['auth']) && is_array($cfg['auth'])
-            && isset($cfg['auth']['password'])) {
-            $raw_pass = (string)$cfg['auth']['password'];
-            if ($raw_pass !== '') {
-                $has_pass = true;
-                $pass_placeholder = sc_is_placeholder_password($raw_pass);
+        /* Model names are permission names, not API model strings. */
+        $known_models = array();
+        foreach ($cfg as $section => $section_data) {
+            if (!is_string($section) || !is_array($section_data)) {
+                continue;
+            }
+            if (preg_match('/^Model[ \t]+(.+)$/i', $section, $m)) {
+                $name = trim((string)$m[1]);
+                if ($name !== '') {
+                    $known_models[$name] = true;
+                }
             }
         }
-        if (!$has_pass) {
-            $errors[] = 'missing_auth_password';
-        } elseif ($pass_placeholder) {
-            $errors[] = 'auth_password_is_placeholder';
+
+        /* One [User NAME].password must be present and not a placeholder. */
+        $has_user = false;
+        $user_placeholder = false;
+        foreach ($cfg as $section => $section_data) {
+            if (!is_string($section) || !is_array($section_data)) {
+                continue;
+            }
+            if (!preg_match('/^User[ \t]+.+$/i', $section)) {
+                continue;
+            }
+            $has_user = true;
+            $raw_pass = isset($section_data['password'])
+                        ? (string)$section_data['password'] : '';
+            if (sc_is_placeholder_password($raw_pass)) {
+                $user_placeholder = true;
+            }
+            if (isset($section_data['active'])
+                && !sc_config_bool_value_valid($section_data['active'])) {
+                $errors[] = $section . '_active_invalid';
+            }
+            if (isset($section_data['allow_config'])
+                && !sc_config_bool_value_valid($section_data['allow_config'])) {
+                $errors[] = $section . '_allow_config_invalid';
+            }
+            $allow_models = isset($section_data['allow_models'])
+                            ? trim((string)$section_data['allow_models']) : '';
+            if ($allow_models === '') {
+                $errors[] = $section . '_allow_models_empty';
+            } elseif ($allow_models !== '*') {
+                $parts = explode(',', $allow_models);
+                for ($i = 0; $i < count($parts); $i++) {
+                    $model_name = trim((string)$parts[$i]);
+                    if ($model_name === '') {
+                        continue;
+                    }
+                    if (!isset($known_models[$model_name])) {
+                        $errors[] = $section . '_allow_model_missing:'
+                                  . $model_name;
+                    }
+                }
+            }
+        }
+        if (!$has_user) {
+            $errors[] = 'missing_auth_user';
+        } elseif ($user_placeholder) {
+            $errors[] = 'auth_user_password_is_placeholder';
         }
         /* [paths].stunnel / [paths].ca_cert: soft-check existence.
          * CONF.ini stores these as either absolute or relative
@@ -414,6 +489,19 @@ if (!function_exists('sc_validate_config')) {
                 $errors[] = $section_name . '_not_section';
                 continue;
             }
+            $active_text = isset($section_data['active'])
+                           ? (string)$section_data['active'] : '1';
+            if (!sc_config_bool_value_valid($active_text)) {
+                $errors[] = $section_name . '_active_invalid';
+            }
+            $active = !(strtolower(trim($active_text)) === '0'
+                        || strtolower(trim($active_text)) === ''
+                        || strtolower(trim($active_text)) === 'false'
+                        || strtolower(trim($active_text)) === 'no'
+                        || strtolower(trim($active_text)) === 'off');
+            if (!$active) {
+                continue;
+            }
             $key = isset($section_data['api_key'])
                    ? (string)$section_data['api_key'] : '';
             if ($key === '') {
@@ -425,6 +513,13 @@ if (!function_exists('sc_validate_config')) {
                     ? strtolower(trim((string)$section_data['type'])) : '';
             if ($type === '' || !isset($supported_types[$type])) {
                 $errors[] = $section_name . '_invalid_type';
+            }
+            $model_id = isset($section_data['model_id'])
+                        ? trim((string)$section_data['model_id']) : '';
+            if ($model_id === '') {
+                $errors[] = $section_name . '_missing_model_id';
+            } elseif (!isset($known_models[$model_id])) {
+                $errors[] = $section_name . '_model_id_missing:' . $model_id;
             }
         }
         return $errors;

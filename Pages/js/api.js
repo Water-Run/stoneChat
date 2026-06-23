@@ -556,6 +556,18 @@
             return sc_request('POST', 'auth.php', { action: 'logout' });
         },
 
+        // POST /Server/api/auth.php action=logout, asynchronous.
+        // Used by the Logout button so an active stream cannot freeze IE.
+        logoutAsync: function (onComplete) {
+            return sc_request_async('POST', 'auth.php',
+                                    { action: 'logout' }, null, onComplete);
+        },
+
+        // POST /Server/api/auth.php action=check
+        checkAuth: function () {
+            return sc_request('POST', 'auth.php', { action: 'check' });
+        },
+
         // POST /Server/api/config.php action=reload
         reloadConfig: function () {
             return sc_request('POST', 'config.php', { action: 'reload' });

@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================
-:: stoneChat launcher (RUN.bat)
+:: stoneChat launcher (RUN.cmd)
 :: Pure-CMD, no PowerShell / no wmic dependencies.
 :: Verifies the runtime environment before starting PHP.
 :: ============================================================
@@ -11,12 +11,12 @@ setlocal DisableDelayedExpansion
 cd /d "%~dp0"
 
 set "SC_SOURCE_PATH=%CD%"
-set "SC_TEST_PATH=%SC_SOURCE_PATH:!=%"
-if not "%SC_SOURCE_PATH%"=="%SC_TEST_PATH%" (
+echo(%SC_SOURCE_PATH%| findstr /C:"!" >nul
+if not errorlevel 1 (
     echo.
     echo [FAIL] Current stoneChat path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely run from this path.
-    echo        Move stoneChat to a path without ! and run RUN.bat again.
+    echo        Move stoneChat to a path without ! and run RUN.cmd again.
     echo.
     pause
     endlocal
@@ -33,8 +33,8 @@ if exist "%~dp0CONF.ini" (
         )
     )
 )
-set "STUNNEL_TEST_PATH=%STUNNEL_PATH:!=%"
-if not "%STUNNEL_PATH%"=="%STUNNEL_TEST_PATH%" (
+echo(%STUNNEL_PATH%| findstr /C:"!" >nul
+if not errorlevel 1 (
     echo.
     echo [FAIL] Stunnel path contains an exclamation mark !.
     echo        CMD delayed expansion cannot safely use that path.
@@ -112,7 +112,7 @@ if not exist "%~dp0CONF.ini" (
             set "CONF_OK=1"
         ) else (
             echo        [FAIL] CONF.ini validation failed: !VALIDATE_OUT!
-            echo               Edit CONF.ini ^(server port and auth password are required^).
+            echo               Edit CONF.ini ^(server, users, models, providers^).
             set /a "ERR_COUNT+=1"
         )
     ) else (
@@ -246,7 +246,7 @@ echo.
 if !ERR_COUNT! GTR 0 (
     echo ============================================================
     echo   stoneChat startup check FAILED: !ERR_COUNT! error^(s^).
-    echo   Please fix the issues above and re-run RUN.bat.
+    echo   Please fix the issues above and re-run RUN.cmd.
     echo ============================================================
     echo.
     echo   Suggested order of steps:
@@ -262,10 +262,10 @@ if !ERR_COUNT! GTR 0 (
         echo           Download: https://www.stunnel.org/downloads.html
     )
     if "!CONF_OK!"=="0" if "!PHP_OK!"=="1" (
-        echo   [Step C] Edit CONF.ini: set a real password and API keys.
+        echo   [Step C] Edit CONF.ini: set users, models, providers, and API keys.
     )
     echo.
-    echo   After fixing, re-run RUN.bat.
+    echo   After fixing, re-run RUN.cmd.
     echo.
     pause
     endlocal

@@ -22,7 +22,7 @@
  *   startCountdown()                begin the "waiting" timer
  *   stopCountdown()                 halt and reset the timer
  *   updateCharCount(text, max)      update the "字数: N / M" display
- *   handleEnterKey(e, callback)     Ctrl+Enter shortcut handler
+ *   handleEnterKey(e, callback)     Enter/Shift+Enter send shortcut
  *   scrollToBottom()                auto-scroll messages container
  *   clearMessages()                 empty the messages container
  *   deleteConversation(chatId)      drop a conversation (recycle bin)
@@ -145,6 +145,13 @@
                 : null);
     }
 
+    function sc_findSendHintNode() {
+        return document.getElementById('send-hint')
+            || (document.querySelector
+                ? document.querySelector('.input-area .send-hint')
+                : null);
+    }
+
     function sc_findInput() {
         return document.getElementById('chat-input')
             || document.getElementsByTagName('textarea').item(0)
@@ -175,6 +182,211 @@
     }
 
     /* ------------------------------------------------------------------
+     * Small, safe Markdown subset.
+     *
+     * The parser is deliberately old-fashioned: no innerHTML, no regex
+     * replace callbacks, no dependencies. It creates DOM nodes directly
+     * so raw HTML in model output remains text.
+     * ------------------------------------------------------------------ */
+
+    function sc_emptyNode(node) {
+        if (!node) { return; }
+        while (node.firstChild) {
+            node.removeChild(node.firstChild);
+        }
+        if (node.children && node.children.length) {
+            while (node.children.length) {
+                node.removeChild(node.children[0]);
+            }
+        }
+        if (typeof node.textContent === 'string') {
+            node.textContent = '';
+        } else if (typeof node.innerText === 'string') {
+            node.innerText = '';
+        }
+    }
+
+    function sc_appendText(parent, text) {
+        if (!parent || text === '') { return; }
+        parent.appendChild(document.createTextNode(String(text)));
+    }
+
+    function sc_safeLink(url) {
+        if (!url) { return ''; }
+        var u = String(url);
+        var l = u.toLowerCase();
+        if (l.indexOf('http://') === 0 || l.indexOf('https://') === 0
+            || l.indexOf('mailto:') === 0) {
+            return u;
+        }
+        return '';
+    }
+
+    function sc_appendInline(parent, text) {
+        var s = String(text || '');
+        var i = 0;
+        while (i < s.length) {
+            if (s.charAt(i) === '`') {
+                var ce = s.indexOf('`', i + 1);
+                if (ce > i + 1) {
+                    var code = sc_makeEl('code', 'md-code', null);
+                    sc_appendText(code, s.substring(i + 1, ce));
+                    parent.appendChild(code);
+                    i = ce + 1;
+                    continue;
+                }
+            }
+            if (s.substr(i, 2) === '**') {
+                var se = s.indexOf('**', i + 2);
+                if (se > i + 2) {
+                    var strong = sc_makeEl('strong', '', null);
+                    sc_appendInline(strong, s.substring(i + 2, se));
+                    parent.appendChild(strong);
+                    i = se + 2;
+                    continue;
+                }
+            }
+            if (s.charAt(i) === '*'
+                && s.substr(i, 2) !== '**') {
+                var ee = s.indexOf('*', i + 1);
+                if (ee > i + 1 && s.charAt(i + 1) !== ' ') {
+                    var em = sc_makeEl('em', '', null);
+                    sc_appendInline(em, s.substring(i + 1, ee));
+                    parent.appendChild(em);
+                    i = ee + 1;
+                    continue;
+                }
+            }
+            if (s.charAt(i) === '[') {
+                var lb = s.indexOf('](', i + 1);
+                if (lb !== -1) {
+                    var rb = s.indexOf(')', lb + 2);
+                    if (rb !== -1) {
+                        var label = s.substring(i + 1, lb);
+                        var rawUrl = s.substring(lb + 2, rb);
+                        var url = sc_safeLink(rawUrl);
+                        if (url !== '') {
+                            var a = sc_makeEl('a', '', null);
+                            a.setAttribute('href', url);
+                            a.setAttribute('target', '_blank');
+                            sc_appendInline(a, label);
+                            parent.appendChild(a);
+                        } else {
+                            sc_appendText(parent, s.substring(i, rb + 1));
+                        }
+                        i = rb + 1;
+                        continue;
+                    }
+                }
+            }
+            var next = s.length;
+            var marks = ['`', '**', '*', '['];
+            for (var m = 0; m < marks.length; m++) {
+                var p = s.indexOf(marks[m], i + 1);
+                if (p !== -1 && p < next) { next = p; }
+            }
+            sc_appendText(parent, s.substring(i, next));
+            i = next;
+        }
+    }
+
+    function sc_listInfo(line) {
+        var m = /^(\s*)([-*])\s+(.+)$/.exec(line);
+        if (m) {
+            return { tag: 'ul', text: m[3] };
+        }
+        m = /^(\s*)[0-9]+\.\s+(.+)$/.exec(line);
+        if (m) {
+            return { tag: 'ol', text: m[2] };
+        }
+        return null;
+    }
+
+    function sc_appendParagraph(parent, lines) {
+        if (!lines || lines.length === 0) { return; }
+        var p = sc_makeEl('p', 'md-p', null);
+        sc_appendInline(p, lines.join('\n'));
+        parent.appendChild(p);
+    }
+
+    function sc_appendCodeBlock(parent, lines) {
+        var pre = sc_makeEl('pre', 'md-pre', null);
+        var code = sc_makeEl('code', 'md-codeblock', null);
+        sc_appendText(code, lines.join('\n'));
+        pre.appendChild(code);
+        parent.appendChild(pre);
+    }
+
+    function sc_renderMarkdown(parent, content) {
+        sc_emptyNode(parent);
+        var text = String(content || '');
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        var lines = text.split('\n');
+        var para = [];
+        var inCode = false;
+        var codeLines = [];
+        var i;
+
+        for (i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            if (line.indexOf('```') === 0) {
+                if (inCode) {
+                    sc_appendCodeBlock(parent, codeLines);
+                    codeLines = [];
+                    inCode = false;
+                } else {
+                    sc_appendParagraph(parent, para);
+                    para = [];
+                    inCode = true;
+                }
+                continue;
+            }
+            if (inCode) {
+                codeLines.push(line);
+                continue;
+            }
+            if (/^\s*$/.test(line)) {
+                sc_appendParagraph(parent, para);
+                para = [];
+                continue;
+            }
+            var heading = /^(#{1,3})\s+(.+)$/.exec(line);
+            if (heading) {
+                sc_appendParagraph(parent, para);
+                para = [];
+                var h = sc_makeEl('h' + heading[1].length, 'md-heading', null);
+                sc_appendInline(h, heading[2]);
+                parent.appendChild(h);
+                continue;
+            }
+            var li = sc_listInfo(line);
+            if (li) {
+                sc_appendParagraph(parent, para);
+                para = [];
+                var list = sc_makeEl(li.tag, 'md-list', null);
+                while (i < lines.length) {
+                    li = sc_listInfo(lines[i]);
+                    if (!li || li.tag !== list.tagName.toLowerCase()) {
+                        i--;
+                        break;
+                    }
+                    var item = sc_makeEl('li', '', null);
+                    sc_appendInline(item, li.text);
+                    list.appendChild(item);
+                    i++;
+                }
+                parent.appendChild(list);
+                continue;
+            }
+            para.push(line);
+        }
+        if (inCode) {
+            sc_appendCodeBlock(parent, codeLines);
+        }
+        sc_appendParagraph(parent, para);
+    }
+
+    /* ------------------------------------------------------------------
      * Public: renderMessage(role, content, timestamp)
      * Append a new message bubble to the messages container. Returns the
      * wrapper DOM node so callers (or a future SSE stream) can update it.
@@ -194,7 +406,9 @@
         var wrapper = sc_makeEl('div', 'msg ' + safeRole + '-message');
         wrapper.appendChild(sc_makeEl('span', 'msg-role',
             roleText + ' @ ' + ts));
-        wrapper.appendChild(sc_makeEl('div', 'msg-body', content));
+        var body = sc_makeEl('div', 'msg-body', null);
+        sc_renderMarkdown(body, content);
+        wrapper.appendChild(body);
         container.appendChild(wrapper);
         sc_scrollToBottom();
         if (safeRole === 'assistant') {
@@ -281,6 +495,20 @@
         sc_renderCountdown(0);
     }
 
+    function sc_renderSendHint() {
+        var node = sc_findSendHintNode();
+        if (!node) { return; }
+        var mode = 'enter';
+        if (state.config && state.config.send_shortcut === 'shift_enter') {
+            mode = 'shift_enter';
+        }
+        if (mode === 'shift_enter') {
+            sc_setText(node, 'Shift+Enter\u53d1\u9001 / Enter\u6362\u884c');
+        } else {
+            sc_setText(node, 'Enter\u53d1\u9001 / Shift+Enter\u6362\u884c');
+        }
+    }
+
     /* ------------------------------------------------------------------
      * Input + button enable/disable during in-flight requests.
      * ------------------------------------------------------------------ */
@@ -295,6 +523,14 @@
         if (sendBtn) { sendBtn.disabled = state.isStreaming; }
         if (regenBtn) { regenBtn.disabled = state.isStreaming; }
         if (stopBtn) { stopBtn.disabled = !state.isStreaming; }
+    }
+
+    function sc_renderError(bodyNode, message) {
+        if (!bodyNode) { return; }
+        var box = sc_makeEl('div', 'msg-error', '');
+        sc_setText(box, '[Error] ' + String(message || 'unknown_error'));
+        bodyNode.appendChild(box);
+        sc_scrollToBottom();
     }
 
     /* ------------------------------------------------------------------
@@ -342,9 +578,11 @@
         var assistantNode = sc_renderMessage('assistant', '', new Date());
         var bodyNode = assistantNode.getElementsByTagName('div')[0]
                     || assistantNode.lastChild;
+        var assistantText = '';
 
         var xhr = window.SC.Api.sendMessageStream(chatId, text,
             function (chunk) {
+                assistantText += chunk;
                 if (typeof bodyNode.textContent === 'string') {
                     bodyNode.textContent += chunk;
                 } else {
@@ -358,6 +596,7 @@
                 state.activeXhr = null;
 
                 if (result && result.ok === true) {
+                    sc_renderMarkdown(bodyNode, assistantText);
                     if (result.data && result.data.chat_name && window.SC && window.SC.App && typeof window.SC.App.renderHistoryList === 'function') {
                         try {
                             var h = window.SC.Api.getHistory();
@@ -383,14 +622,8 @@
                         if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
                             errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
                         }
-                    } else {
-                        errMsg = '[Error] ' + errMsg;
                     }
-                    if (typeof bodyNode.textContent === 'string') {
-                        bodyNode.textContent += ' ' + errMsg;
-                    } else {
-                        bodyNode.innerText += ' ' + errMsg;
-                    }
+                    sc_renderError(bodyNode, errMsg);
                 }
             }
         );
@@ -445,9 +678,11 @@
         var assistantNode = sc_renderMessage('assistant', '', new Date());
         var bodyNode = assistantNode.getElementsByTagName('div')[0]
                     || assistantNode.lastChild;
+        var assistantText = '';
 
         var xhr = window.SC.Api.regenerateChatStream(state.lastChatId,
             function (chunk) {
+                assistantText += chunk;
                 if (typeof bodyNode.textContent === 'string') {
                     bodyNode.textContent += chunk;
                 } else {
@@ -461,7 +696,7 @@
                 state.activeXhr = null;
 
                 if (result && result.ok === true) {
-                    // Done
+                    sc_renderMarkdown(bodyNode, assistantText);
                 } else {
                     var errMsg = (result && result.error) || 'unknown_error';
                     if (errMsg === 'abort' || (xhr && xhr.status === 0)) {
@@ -469,14 +704,8 @@
                         if (window.SC && window.SC.I18n && typeof window.SC.I18n.t === 'function') {
                             errMsg = window.SC.I18n.t('chat.stream.warning') || errMsg;
                         }
-                    } else {
-                        errMsg = '[Error] ' + errMsg;
                     }
-                    if (typeof bodyNode.textContent === 'string') {
-                        bodyNode.textContent += ' ' + errMsg;
-                    } else {
-                        bodyNode.innerText += ' ' + errMsg;
-                    }
+                    sc_renderError(bodyNode, errMsg);
                 }
             }
         );
@@ -487,16 +716,24 @@
 
     /* ------------------------------------------------------------------
      * Public: handleEnterKey(e, callback)
-     * Triggers `callback` on Ctrl+Enter (or Cmd+Enter on a Mac keyboard).
+     * Default: Enter sends, Shift+Enter inserts a newline.
+     * If [ui] send_shortcut = shift_enter, the two are swapped.
      * Returns true if the event was consumed.
      * ------------------------------------------------------------------ */
 
     function sc_handleEnterKey(e, callback) {
         e = e || window.event;
         if (!e) { return false; }
-        var ctrl = e.ctrlKey === true || e.metaKey === true;
         var key = e.keyCode || e.which || 0;
-        if (ctrl && key === 13) {
+        if (key !== 13) { return false; }
+        var ctrl = e.ctrlKey === true || e.metaKey === true;
+        var mode = 'enter';
+        if (state.config && state.config.send_shortcut === 'shift_enter') {
+            mode = 'shift_enter';
+        }
+        var shouldSend = ctrl || (mode === 'shift_enter'
+                         ? e.shiftKey === true : e.shiftKey !== true);
+        if (shouldSend) {
             if (typeof callback === 'function') {
                 try { callback(); } catch (err) { /* swallow */ }
             }
@@ -601,6 +838,7 @@
         // Initialise the visible counters.
         sc_updateCharCount(input ? input.value : '', SC_DEFAULT_MAX_CHARS);
         sc_renderCountdown(0);
+        sc_renderSendHint();
     }
 
     /* ------------------------------------------------------------------

@@ -13,7 +13,7 @@
  *                            langs         (supported language codes)
  *                            auth_enabled  (bool)
  *                          Provider api_key / api_base and
- *                          [auth].password are NEVER echoed back.
+ *                          [User NAME].password are NEVER echoed back.
  *   POST reload_config   -> {ok:true, message:'reloaded'}; re-reads
  *                          CONF.ini.
  *
@@ -26,6 +26,7 @@ if (function_exists('sc_strict_environment_check')) {
     sc_strict_environment_check();
 }
 require_once dirname(__FILE__) . '/../config.php';
+require_once dirname(__FILE__) . '/../auth.php';
 require_once dirname(__FILE__) . '/../i18n.php';
 
 /* sc_api_config_ini_path()
@@ -52,6 +53,8 @@ if (!function_exists('sc_api_config_sanitize_providers')) {
             }
             $out[] = array(
                 'id'    => isset($p['id'])    ? (string)$p['id']    : '',
+                'model_id' => isset($p['model_id'])
+                              ? (string)$p['model_id'] : '',
                 'label' => isset($p['label']) ? (string)$p['label'] : '',
                 'type'  => isset($p['type'])  ? (string)$p['type']  : '',
                 'model' => isset($p['model']) ? (string)$p['model'] : '',
@@ -86,9 +89,8 @@ if (!function_exists('sc_api_config_truthy')) {
 
 /* sc_api_config_resolve_auth_enabled($cfg)
  *   Decide whether authentication is enabled. Honours an explicit
- *   [auth].enabled flag, otherwise falls back to "enabled iff a
- *   real (non-placeholder) password is configured" so a freshly
- *   installed CONF.ini reports auth_enabled=false accurately. */
+ *   [auth].enabled flag, otherwise falls back to "enabled iff
+ *   at least one [User NAME] exists". */
 if (!function_exists('sc_api_config_resolve_auth_enabled')) {
     function sc_api_config_resolve_auth_enabled($cfg) {
         if (!is_array($cfg) || !isset($cfg['auth'])
@@ -101,17 +103,33 @@ if (!function_exists('sc_api_config_resolve_auth_enabled')) {
                 return $flag;
             }
         }
-        /* fallback: a non-empty, non-placeholder password implies auth. */
-        if (isset($cfg['auth']['password'])
-            && (string)$cfg['auth']['password'] !== '') {
-            $raw = (string)$cfg['auth']['password'];
-            if (function_exists('sc_is_placeholder_password')
-                && sc_is_placeholder_password($raw)) {
-                return false;
-            }
+        if (function_exists('sc_auth_has_config_users')
+            && sc_auth_has_config_users($cfg)) {
             return true;
         }
         return false;
+    }
+}
+
+if (!function_exists('sc_api_config_cookie_context')) {
+    function sc_api_config_cookie_context($cfg) {
+        $name = 'sc_auth';
+        if (is_array($cfg) && isset($cfg['auth']['cookie_name'])
+            && (string)$cfg['auth']['cookie_name'] !== '') {
+            $name = (string)$cfg['auth']['cookie_name'];
+        }
+        $token = '';
+        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
+            $token = $_COOKIE[$name];
+        }
+        if ($token === '' && isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
+            $token = $_COOKIE['sc_session'];
+        }
+        if ($token !== '' && function_exists('sc_auth_token_context')) {
+            return sc_auth_token_context($token, $cfg);
+        }
+        return array('ok' => false, 'username' => '');
     }
 }
 
@@ -148,11 +166,28 @@ if (!function_exists('sc_api_config_build_payload')) {
                 $allow_online_editor = $flag;
             }
         }
+        $send_shortcut = 'enter';
+        if (isset($cfg['ui']['send_shortcut'])
+            && strtolower((string)$cfg['ui']['send_shortcut']) === 'shift_enter') {
+            $send_shortcut = 'shift_enter';
+        }
+        $ctx = sc_api_config_cookie_context($cfg);
+        $username = '';
+        $can_edit_config = false;
+        if (!empty($ctx['ok'])) {
+            $username = isset($ctx['username']) ? (string)$ctx['username'] : '';
+            if (function_exists('sc_auth_can_edit_config')) {
+                $can_edit_config = sc_auth_can_edit_config($cfg, $username);
+            }
+        }
         return array(
             'title'               => $title,
             'default_lang'        => $default_lang,
             'theme'               => $theme,
             'allow_online_editor' => $allow_online_editor,
+            'can_edit_config'     => ($allow_online_editor && $can_edit_config),
+            'send_shortcut'       => $send_shortcut,
+            'username'            => $username,
             'providers'           => sc_api_config_sanitize_providers(
                                          sc_load_providers($path)
                                      ),

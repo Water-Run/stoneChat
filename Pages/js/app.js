@@ -20,7 +20,7 @@
  *   deleteChat(chatId)       confirm then SC.Api.deleteChat
  *   renameChat(id, name)     SC.Api.renameChat
  *   connectCheck(providerId) SC.Api.connectCheck (defaults to current)
- *   logout()                 SC.Api.logout, then redirect to login page
+ *   logout()                 stop stream, async logout, then redirect
  *
  * Expected DOM IDs (provided by chat.htm)
  *   sc-logo, sc-lang-switcher, sc-new-chat-btn, sc-reload-config-btn,
@@ -212,6 +212,23 @@
         }
     }
 
+    function renderUserMark(authResp) {
+        var mark = $id('sc-user-mark');
+        if (!mark) { return; }
+        var username = '';
+        if (authResp && authResp.ok && authResp.data) {
+            username = authResp.data.username || '';
+        }
+        if (username === '' && currentConfig) {
+            username = currentConfig.username || '';
+        }
+        if (username === '') {
+            setText(mark, 'User: -');
+        } else {
+            setText(mark, 'User: ' + username);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // About dialog. Pulls title from the loaded config when available;
     // everything else is hard-coded (the values are constants, not user
@@ -340,19 +357,18 @@
     // -------------------------------------------------------------------------
     // openConfigFile: a browser running on a client machine cannot open a
     // server-side file directly. We surface the location of CONF.ini on
-    // the server host and remind the user that INSTALL.cmd / a text editor
-    // is the right tool for editing it. Then they can press "Reload config"
-    // to pick up the changes.
+    // the server host. Then they can press "Reload config" to pick up
+    // the changes.
     // -------------------------------------------------------------------------
     function openConfigFile() {
-        if (currentConfig && currentConfig.allow_online_editor === true) {
+        if (currentConfig && currentConfig.allow_online_editor === true
+            && currentConfig.can_edit_config === true) {
             window.open('editor.php', '_blank', 'width=800,height=600');
         } else {
             alert(
-                'CONF.ini lives on the server host, next to RUN.bat.\n\n'
-              + 'Online config editor is DISABLED in CONF.ini (allow_online_editor = false).\n'
-              + 'Edit CONF.ini manually with Notepad (or INSTALL.cmd reopens it),\n'
-              + 'then click "Reload config" to apply the changes.'
+                'CONF.ini lives on the server host, next to RUN.cmd.\n\n'
+              + 'Online config editor is disabled for this user.\n'
+              + 'Ask an Admin user to edit CONF.ini, then click "Reload config".'
             );
         }
     }
@@ -471,7 +487,15 @@
     // (e.g. cookie already gone) the login page will reject anyway.
     // -------------------------------------------------------------------------
     function logout() {
-        try { SC.Api.logout(); } catch (e) { /* ignore */ }
+        if (typeof SC.Chat !== 'undefined' && SC.Chat
+            && typeof SC.Chat.stop === 'function') {
+            try { SC.Chat.stop(); } catch (e1) { /* ignore */ }
+        }
+        try {
+            if (SC.Api && typeof SC.Api.logoutAsync === 'function') {
+                SC.Api.logoutAsync(function () {});
+            }
+        } catch (e2) { /* ignore */ }
         if (typeof location !== 'undefined') {
             location.href = loginUrl;
         }
@@ -584,6 +608,15 @@
             currentConfig = cfgResp.data;
         }
 
+        var authResp = null;
+        if (typeof SC.Api.checkAuth === 'function') {
+            authResp = SC.Api.checkAuth();
+            if (!authResp || !authResp.ok) {
+                window.location.href = 'index.htm';
+                return;
+            }
+        }
+
         // 2. Providers list (used by the top menu and the new-chat dialog).
         var provResp = SC.Api.getProviders();
         if (provResp && provResp.ok
@@ -611,6 +644,7 @@
 
         // 6. Render the language switcher (uses SC.I18n from i18n.js).
         renderLangSwitcher();
+        renderUserMark(authResp);
 
         // 6.5. Initialize Chat UI handlers (uses SC.Chat from chat.js).
         if (typeof SC.Chat !== 'undefined' && SC.Chat && typeof SC.Chat.init === 'function') {

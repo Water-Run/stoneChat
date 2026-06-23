@@ -4,7 +4,7 @@
  *
  * Single-file JSON API for chat operations. Routing is body-driven
  * via the "action" field. Every request must be POST and carry a
- * valid session cookie (validated against cfg[auth][password] in
+ * valid session cookie (validated against [User NAME] passwords in
  * constant time).
  *
  * Wire format (request body, all keys action-specific):
@@ -128,12 +128,14 @@ if (!function_exists('sc_api_chat_load_cfg')) {
     }
 }
 
-/* sc_api_chat_is_authorized($cfg)
- *   Check that the request carries a valid session cookie. */
-if (!function_exists('sc_api_chat_is_authorized')) {
-    function sc_api_chat_is_authorized($cfg) {
+/* sc_api_chat_auth_context($cfg)
+ *   Return the current authenticated username from the session
+ *   cookie. */
+if (!function_exists('sc_api_chat_auth_context')) {
+    function sc_api_chat_auth_context($cfg) {
+        $bad = array('ok' => false, 'username' => '');
         if (!is_array($cfg)) {
-            return false;
+            return $bad;
         }
         $name = 'sc_auth';
         if (isset($cfg['auth']['cookie_name'])
@@ -149,15 +151,21 @@ if (!function_exists('sc_api_chat_is_authorized')) {
             $token = $_COOKIE['sc_session'];
         }
         if ($token === '') {
-            return false;
+            return $bad;
         }
-        if (function_exists('sc_auth_verify_token')) {
-            return sc_auth_verify_token($token, $cfg);
+        if (function_exists('sc_auth_token_context')) {
+            return sc_auth_token_context($token, $cfg);
         }
-        if (strlen($token) < 6 || strpos($token, 'scv1:') !== 0) {
-            return false;
-        }
-        return true;
+        return $bad;
+    }
+}
+
+/* sc_api_chat_is_authorized($cfg)
+ *   Check that the request carries a valid session cookie. */
+if (!function_exists('sc_api_chat_is_authorized')) {
+    function sc_api_chat_is_authorized($cfg) {
+        $ctx = sc_api_chat_auth_context($cfg);
+        return !empty($ctx['ok']);
     }
 }
 
@@ -251,7 +259,7 @@ if (!function_exists('sc_api_chat_ini_path')) {
 /* sc_api_chat_load_providers()
  *   Load the configured providers from CONF.ini as raw rows. */
 if (!function_exists('sc_api_chat_load_providers')) {
-    function sc_api_chat_load_providers() {
+    function sc_api_chat_load_providers($cfg) {
         if (!function_exists('sc_load_providers')) {
             return array();
         }
@@ -264,6 +272,11 @@ if (!function_exists('sc_api_chat_load_providers')) {
             if (is_array($p)) {
                 $out[] = $p;
             }
+        }
+        $ctx = sc_api_chat_auth_context($cfg);
+        if (!empty($ctx['ok']) && function_exists('sc_auth_filter_providers')) {
+            $username = isset($ctx['username']) ? (string)$ctx['username'] : '';
+            $out = sc_auth_filter_providers($out, $cfg, $username);
         }
         return $out;
     }
@@ -508,7 +521,7 @@ if (!function_exists('sc_api_chat_handle_send')) {
         }
 
         /* resolve provider (explicit > meta > first configured). */
-        $providers = sc_api_chat_load_providers();
+        $providers = sc_api_chat_load_providers($cfg);
         $provider  = sc_api_chat_resolve_provider(
             $providers, $cfg, $chat_id, $explicit
         );
@@ -601,7 +614,7 @@ if (!function_exists('sc_api_chat_handle_connect_check')) {
             return array('ok' => false, 'latency_ms' => 0,
                          'error' => 'no_provider_id');
         }
-        $providers = sc_api_chat_load_providers();
+        $providers = sc_api_chat_load_providers($cfg);
         $provider  = sc_api_chat_find_provider($providers, $provider_id);
         if ($provider === null) {
             return array('ok' => false, 'latency_ms' => 0,
@@ -675,7 +688,7 @@ if (!function_exists('sc_api_chat_handle_regenerate')) {
         if (function_exists('sc_history_load_messages')) {
             $hist = sc_history_load_messages($chat_id);
         }
-        $providers = sc_api_chat_load_providers();
+        $providers = sc_api_chat_load_providers($cfg);
         $provider  = sc_api_chat_resolve_provider(
             $providers, $cfg, $chat_id, ''
         );
@@ -769,7 +782,7 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
             exit;
         }
 
-        $providers = sc_api_chat_load_providers();
+        $providers = sc_api_chat_load_providers($cfg);
         $provider  = sc_api_chat_resolve_provider(
             $providers, $cfg, $chat_id, $explicit
         );
@@ -909,7 +922,7 @@ if (!function_exists('sc_api_chat_handle_regenerate_stream')) {
         if (function_exists('sc_history_load_messages')) {
             $hist = sc_history_load_messages($chat_id);
         }
-        $providers = sc_api_chat_load_providers();
+        $providers = sc_api_chat_load_providers($cfg);
         $provider  = sc_api_chat_resolve_provider(
             $providers, $cfg, $chat_id, ''
         );
@@ -1002,7 +1015,8 @@ if (defined('SC_API_CHAT_NO_ENTRY') && SC_API_CHAT_NO_ENTRY) {
 $cfg = sc_api_chat_load_cfg();
 
 /* 1. Auth gate. Every action below assumes a valid session. */
-if (!sc_api_chat_is_authorized($cfg)) {
+$auth_ctx = sc_api_chat_auth_context($cfg);
+if (empty($auth_ctx['ok'])) {
     sc_api_chat_emit(401, array('ok' => false, 'error' => 'auth_required'));
 }
 

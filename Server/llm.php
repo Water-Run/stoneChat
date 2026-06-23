@@ -94,6 +94,65 @@ if (!function_exists('sc_llm_request_path')) {
     }
 }
 
+/* sc_llm_delta_suffix($value, &$last_value)
+ *   Some OpenAI-compatible providers (MiniMax M3 included) stream
+ *   cumulative text in delta.content / reasoning_details instead of
+ *   token deltas. Return only the newly-added suffix when possible;
+ *   for normal OpenAI deltas, return the chunk unchanged. */
+if (!function_exists('sc_llm_delta_suffix')) {
+    function sc_llm_delta_suffix($value, &$last_value) {
+        $text = (string)$value;
+        $last = (string)$last_value;
+        if ($text === '') {
+            return '';
+        }
+        if ($last !== '' && strpos($text, $last) === 0) {
+            $out = substr($text, strlen($last));
+            $last_value = $text;
+            return $out;
+        }
+        $last_value = $text;
+        return $text;
+    }
+}
+
+/* sc_llm_openai_delta_text($delta, &$last_content, &$last_reasoning)
+ *   Extract displayable text from OpenAI-compatible streaming deltas.
+ *   Supports standard delta.content and MiniMax reasoning_details /
+ *   reasoning_content fields. */
+if (!function_exists('sc_llm_openai_delta_text')) {
+    function sc_llm_openai_delta_text($delta, &$last_content,
+                                      &$last_reasoning) {
+        if (!is_array($delta)) {
+            return '';
+        }
+        $out = '';
+        if (isset($delta['content']) && $delta['content'] !== null) {
+            $out .= sc_llm_delta_suffix(
+                $delta['content'], $last_content
+            );
+        }
+        if (isset($delta['reasoning_content'])
+            && $delta['reasoning_content'] !== null) {
+            $out .= sc_llm_delta_suffix(
+                $delta['reasoning_content'], $last_reasoning
+            );
+        }
+        if (isset($delta['reasoning_details'])
+            && is_array($delta['reasoning_details'])) {
+            foreach ($delta['reasoning_details'] as $detail) {
+                if (is_array($detail) && isset($detail['text'])
+                    && $detail['text'] !== null) {
+                    $out .= sc_llm_delta_suffix(
+                        $detail['text'], $last_reasoning
+                    );
+                }
+            }
+        }
+        return $out;
+    }
+}
+
 /* SC_SseStreamParser
  *   Client-side SSE parser for raw HTTP body chunks. Buffers lines
  *   and decodes data: events. */
@@ -102,6 +161,8 @@ if (!class_exists('SC_SseStreamParser')) {
         private $buffer = '';
         private $outer_callback;
         private $type;
+        private $last_content = '';
+        private $last_reasoning = '';
 
         public function __construct($outer_callback, $type) {
             $this->outer_callback = $outer_callback;
@@ -138,8 +199,13 @@ if (!class_exists('SC_SseStreamParser')) {
 
                 $text = '';
                 if ($this->type === 'openai') {
-                    if (isset($d['choices'][0]['delta']['content'])) {
-                        $text = (string)$d['choices'][0]['delta']['content'];
+                    if (isset($d['choices'][0]['delta'])
+                        && is_array($d['choices'][0]['delta'])) {
+                        $text = sc_llm_openai_delta_text(
+                            $d['choices'][0]['delta'],
+                            $this->last_content,
+                            $this->last_reasoning
+                        );
                     }
                 } else if ($this->type === 'anthropic') {
                     if (isset($d['type'])
@@ -362,16 +428,26 @@ if (!function_exists('sc_llm_parse_openai_response')) {
             $events = sc_llm_defensive_sse_parse($raw_body);
             if (!empty($events)) {
                 $content = '';
+                $last_content = '';
+                $last_reasoning = '';
                 foreach ($events as $ev) {
                     if (!empty($ev['done'])) {
                         break;
                     }
                     $d = json_decode($ev['data'], true);
                     if (!is_array($d)
-                        || !isset($d['choices'][0]['delta']['content'])) {
+                        || !isset($d['choices'][0]['delta'])
+                        || !is_array($d['choices'][0]['delta'])) {
                         continue;
                     }
-                    $chunk = (string)$d['choices'][0]['delta']['content'];
+                    $chunk = sc_llm_openai_delta_text(
+                        $d['choices'][0]['delta'],
+                        $last_content,
+                        $last_reasoning
+                    );
+                    if ($chunk === '') {
+                        continue;
+                    }
                     $content .= $chunk;
                     if ($cb !== null) {
                         call_user_func($cb, $chunk, $d);

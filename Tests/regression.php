@@ -69,6 +69,7 @@ function sc_test_router_probe($path) {
 }
 
 require_once dirname(__FILE__) . '/../Server/config.php';
+require_once dirname(__FILE__) . '/../Server/auth.php';
 require_once dirname(__FILE__) . '/../Server/llm.php';
 if (!function_exists('sc_strict_environment_check')) {
     function sc_strict_environment_check() {
@@ -80,6 +81,134 @@ define('SC_API_CHAT_NO_ENTRY', true);
 require_once dirname(__FILE__) . '/../Server/api/chat.php';
 
 $root = dirname(__FILE__) . '/..';
+
+$test = 'configured users drive auth policy directly';
+$auth_cfg = array(
+    'User Admin' => array(
+        'password' => 'admin123',
+        'active' => 'true',
+        'allow_config' => 'true',
+        'allow_models' => '*',
+    ),
+    'User Guest' => array(
+        'password' => 'guestpass',
+        'active' => 'true',
+        'allow_config' => 'false',
+        'allow_models' => 'GPT55',
+    ),
+    'User Off' => array(
+        'password' => 'offpass',
+        'active' => 'false',
+        'allow_config' => 'false',
+        'allow_models' => '*',
+    ),
+);
+$admin_user = sc_auth_find_user_by_password('admin123', $auth_cfg);
+$guest_user = sc_auth_find_user_by_password('guestpass', $auth_cfg);
+$off_user = sc_auth_find_user_by_password('offpass', $auth_cfg);
+$bad_user = sc_auth_find_user_by_password('wrong', $auth_cfg);
+sc_test_assert_equal($test, 'Admin',
+                     isset($admin_user['username'])
+                     ? $admin_user['username'] : '',
+                     'admin password should select Admin user');
+sc_test_assert_equal($test, 'Guest',
+                     isset($guest_user['username'])
+                     ? $guest_user['username'] : '',
+                     'guest password should select Guest user');
+sc_test_assert_true($test, empty($off_user['ok']),
+                    'inactive user should not log in');
+sc_test_assert_true($test, empty($bad_user['ok']),
+                    'unknown password should not log in');
+sc_test_assert_true($test, sc_auth_can_edit_config($auth_cfg, 'Admin'),
+                    'Admin user should edit config');
+sc_test_assert_true($test, !sc_auth_can_edit_config($auth_cfg, 'Guest'),
+                    'Guest user should not edit config');
+$admin_token = sc_auth_generate_token($auth_cfg, $admin_user);
+$admin_ctx = sc_auth_token_context($admin_token, $auth_cfg);
+sc_test_assert_equal($test, 'Admin',
+                     isset($admin_ctx['username'])
+                     ? $admin_ctx['username'] : '',
+                     'token should preserve username');
+
+$test = 'user provider policy allows configured ids';
+$provider_rows = array(
+    array('id' => 'openai', 'model_id' => 'GPT55'),
+    array('id' => 'minimax', 'model_id' => 'MiniMaxM3'),
+    array('id' => 'mock', 'model_id' => 'MockLocal'),
+);
+$guest_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Guest');
+$admin_rows = sc_auth_filter_providers($provider_rows, $auth_cfg, 'Admin');
+sc_test_assert_equal($test, 1, count($guest_rows),
+                     'Guest should only see allowed providers');
+sc_test_assert_equal($test, 'openai',
+                     isset($guest_rows[0]['id']) ? $guest_rows[0]['id'] : '',
+                     'Guest remaining provider should be GPT55/openai');
+sc_test_assert_equal($test, 3, count($admin_rows),
+                     'Admin should see all providers');
+
+$test = 'config validation catches user model mistakes';
+$bad_model_cfg = array(
+    'server' => array('port' => '9999'),
+    'User Admin' => array(
+        'password' => 'admin123',
+        'active' => 'maybe',
+        'allow_config' => 'true',
+        'allow_models' => 'MiniMaxM3,MissingModel',
+    ),
+    'Model MiniMaxM3' => array('label' => 'MiniMax M3'),
+    'Provider 1' => array(
+        'id' => 'minimax',
+        'model_id' => 'MissingProviderModel',
+        'type' => 'openai',
+        'api_base' => 'https://api.minimaxi.com/v1',
+        'api_key' => 'real-key',
+        'model' => 'MiniMax-M3',
+    ),
+);
+$bad_model_errors = sc_validate_config($bad_model_cfg);
+sc_test_assert_true(
+    $test,
+    in_array('User Admin_active_invalid', $bad_model_errors, true),
+    'invalid active value should be reported'
+);
+sc_test_assert_true(
+    $test,
+    in_array('User Admin_allow_model_missing:MissingModel',
+             $bad_model_errors, true),
+    'unknown user allow_models entry should be reported'
+);
+sc_test_assert_true(
+    $test,
+    in_array('Provider 1_model_id_missing:MissingProviderModel',
+             $bad_model_errors, true),
+    'provider model_id without a [Model NAME] should be reported'
+);
+
+$test = 'inactive placeholder providers are ignored';
+$inactive_provider_cfg = array(
+    'server' => array('port' => '9999'),
+    'User Admin' => array(
+        'password' => 'admin123',
+        'active' => '1',
+        'allow_config' => '1',
+        'allow_models' => '*',
+    ),
+    'Model GPT55' => array('label' => 'GPT-5.5'),
+    'Provider 1' => array(
+        'id' => 'openai',
+        'active' => '0',
+        'model_id' => 'GPT55',
+        'type' => 'openai',
+        'api_base' => 'https://api.openai.com/v1',
+        'api_key' => 'YOUR_OPENAI_API_KEY_HERE',
+        'model' => 'gpt-3.5-turbo',
+    ),
+);
+$inactive_errors = sc_config_fatal_errors(
+    sc_validate_config($inactive_provider_cfg)
+);
+sc_test_assert_equal($test, array(), $inactive_errors,
+                     'inactive providers should not block startup');
 
 $test = 'sc_validate_path_resolve preserves POSIX absolute base';
 $resolved = sc_validate_path_resolve(
@@ -119,6 +248,33 @@ sc_test_assert_equal($test, 66,
                      isset($sent_body['max_tokens'])
                      ? $sent_body['max_tokens'] : null,
                      'provider max_tokens should reach transport JSON');
+
+$test = 'OpenAI streaming parser handles cumulative MiniMax chunks';
+$mini_chunks = array();
+function sc_test_minimax_chunk($chunk, $event) {
+    global $mini_chunks;
+    $mini_chunks[] = $chunk;
+}
+$mini_sse = '';
+$mini_sse .= "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n";
+$mini_sse .= "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n";
+$mini_sse .= "data: {\"choices\":[{\"delta\":{\"reasoning_details\":[{\"text\":\"Thinking\"}]}}]}\n\n";
+$mini_sse .= "data: {\"choices\":[{\"delta\":{\"reasoning_details\":[{\"text\":\"Thinking done\"}]}}]}\n\n";
+$mini_sse .= "data: {\"choices\":[{\"delta\":{\"content\":\"Hello world\"}}]}\n\n";
+$mini_sse .= "data: [DONE]\n\n";
+$mini_parsed = sc_llm_parse_openai_response(
+    $mini_sse, 200, 'sc_test_minimax_chunk'
+);
+sc_test_assert_true($test, is_array($mini_parsed)
+                    && !empty($mini_parsed['ok']),
+                    'cumulative stream should parse successfully');
+sc_test_assert_equal($test, 'HelloThinking done world',
+                     isset($mini_parsed['content'])
+                     ? $mini_parsed['content'] : '',
+                     'parser should append only new cumulative suffixes');
+sc_test_assert_equal($test, 'HelloThinking done world',
+                     implode('', $mini_chunks),
+                     'callback should receive only new cumulative suffixes');
 
 $test = 'LLM request bodies honor configured max_tokens';
 $openai_body = sc_llm_build_openai_body(
@@ -169,15 +325,47 @@ if (is_array($mock_provider)) {
 
 $test = 'config validation separates fatal startup errors';
 $sample_errors = array(
-    'auth_password_is_placeholder',
+    'auth_user_password_is_placeholder',
+    'Provider 1_model_id_missing:NoSuchModel',
     'paths_stunnel_missing',
     'Provider 1_api_key_is_placeholder',
     'Provider 2_unsupported_type',
 );
 $fatal_errors = sc_config_fatal_errors($sample_errors);
-sc_test_assert_equal($test, array('auth_password_is_placeholder'),
+sc_test_assert_equal($test, array(
+                         'auth_user_password_is_placeholder',
+                         'Provider 1_model_id_missing:NoSuchModel',
+                         'Provider 1_api_key_is_placeholder'
+                     ),
                      $fatal_errors,
-                     'only auth/server/parse errors should block startup validation');
+                     'auth/user/model/provider errors should block startup validation');
+
+$test = 'sample config documents default users and provider rights';
+$sample_ini = @file_get_contents($root . '/CONF_SMP.INI');
+sc_test_assert_true($test, is_string($sample_ini),
+                    'CONF_SMP.INI should be readable');
+if (is_string($sample_ini)) {
+    sc_test_assert_true(
+        $test,
+        strpos($sample_ini, '[User Admin]') !== false
+        && strpos($sample_ini, 'password = admin123') !== false,
+        'sample config should include default Admin user'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($sample_ini, '[User Guest]') !== false
+        && strpos($sample_ini, 'password = guestpass') !== false,
+        'sample config should include default Guest user'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($sample_ini, '[Model MiniMaxM3]') !== false
+        && strpos($sample_ini, '[Model GPT55]') !== false
+        && strpos($sample_ini, 'allow_models =') !== false
+        && strpos($sample_ini, 'active = true') !== false,
+        'sample config should explain direct user and model rights'
+    );
+}
 
 $test = 'provider normalize parses INI-style boolean strings';
 $norm = sc_api_providers_normalize(
@@ -357,37 +545,90 @@ if (is_string($super_modern)) {
     );
 }
 
-$test = 'installer entry point is INSTALL.cmd';
-sc_test_assert_true($test, is_file($root . '/INSTALL.cmd'),
-                    'INSTALL.cmd should exist at project root');
-sc_test_assert_true($test, !is_file($root . '/INSTALL.bat'),
-                    'INSTALL.bat should be removed after rename');
-
-$test = 'repository text references INSTALL.cmd';
-$check_files = array(
-    'README',
-    'RUN.bat',
-    'INSTALL.cmd',
-    'Pages/js/app.js',
-    'Server/install.php',
-);
-foreach ($check_files as $check_file) {
-    $text = @file_get_contents($root . '/' . $check_file);
-    sc_test_assert_true($test, is_string($text),
-                        $check_file . ' should be readable');
-    if (is_string($text)) {
+$test = 'super-modern interlude uses restrained modern copy';
+sc_test_assert_true($test, is_string($super_modern),
+                    'Pages/super-modern.htm should be readable');
+if (is_string($super_modern)) {
+    $banned = array('UC-style', 'shock-and-awe', '震惊', '惊呆', '太可怕',
+                    '99%', 'AI味', '跪下');
+    foreach ($banned as $word) {
         sc_test_assert_true(
             $test,
-            strpos($text, 'INSTALL.bat') === false,
-            $check_file . ' should not mention INSTALL.bat'
+            strpos($super_modern, $word) === false,
+            'super-modern.htm should not contain clickbait copy: ' . $word
         );
     }
+    sc_test_assert_true(
+        $test,
+        strpos($super_modern, 'Compatibility handoff') !== false,
+        'super-modern.htm should explain the handoff in restrained language'
+    );
 }
 
-$test = 'launcher and installer include dependency download hints';
+$test = 'super-modern interlude stays IE11 compatible';
+sc_test_assert_true($test, is_string($super_modern),
+                    'Pages/super-modern.htm should be readable');
+if (is_string($super_modern)) {
+    $ie11_banned = array('const ', 'let ', '=>', 'URLSearchParams',
+                         'display: grid', 'place-items', 'var(--',
+                         'backdrop-filter', 'text-wrap:', 'clamp(');
+    foreach ($ie11_banned as $word) {
+        sc_test_assert_true(
+            $test,
+            strpos($super_modern, $word) === false,
+            'super-modern.htm should avoid IE11-incompatible syntax: ' . $word
+        );
+    }
+    sc_test_assert_true(
+        $test,
+        strpos($super_modern, 'window.setTimeout(sc_redirect, 3000)')
+        !== false,
+        'super-modern.htm should close the interlude after 3 seconds'
+    );
+}
+
+$test = 'online editor uses library includes and avoids short-open XML';
+$editor_text = @file_get_contents($root . '/Pages/editor.php');
+sc_test_assert_true($test, is_string($editor_text),
+                    'Pages/editor.php should be readable');
+if (is_string($editor_text)) {
+    sc_test_assert_true(
+        $test,
+        strpos($editor_text, "Server/api/auth.php") === false
+        && strpos($editor_text, "Server/api/config.php") === false,
+        'editor.php should not include API entry points'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($editor_text, 'sc_auth_token_context') !== false
+        && strpos($editor_text, 'sc_auth_can_edit_config') !== false,
+        'editor.php should verify the auth cookie and user config right'
+    );
+    sc_test_assert_true(
+        $test,
+        strpos($editor_text, "\n<?xml") === false,
+        'editor.php should not contain a raw XML declaration after PHP'
+    );
+}
+
+$test = 'install mechanism is removed';
+sc_test_assert_true($test, !is_file($root . '/INSTALL.cmd'),
+                    'INSTALL.cmd should not exist');
+sc_test_assert_true($test, !is_file($root . '/UNINSTALL.cmd'),
+                    'UNINSTALL.cmd should not exist');
+sc_test_assert_true($test, !is_file($root . '/Server/install.php'),
+                    'Server/install.php should not exist');
+
+$test = 'launcher is RUN.cmd';
+sc_test_assert_true($test, is_file($root . '/RUN.cmd'),
+                    'RUN.cmd should exist at project root');
+sc_test_assert_true($test, !is_file($root . '/RUN.bat'),
+                    'RUN.bat should be removed after rename');
+
+$test = 'launcher includes dependency download hints';
 $php_url = 'https://windows.php.net/downloads/releases/archives/';
 $stunnel_url = 'https://www.stunnel.org/downloads.html';
-$hint_files = array('RUN.bat', 'INSTALL.cmd');
+$hint_files = array('RUN.cmd');
 foreach ($hint_files as $hint_file) {
     $text = @file_get_contents($root . '/' . $hint_file);
     sc_test_assert_true($test, is_string($text),
@@ -400,27 +641,18 @@ foreach ($hint_files as $hint_file) {
     }
 }
 
-$test = 'launcher and installer require PHP built-in server runtime';
-$run_text = @file_get_contents($root . '/RUN.bat');
-$installer_text = @file_get_contents($root . '/INSTALL.cmd');
+$test = 'launcher requires PHP built-in server runtime';
+$run_text = @file_get_contents($root . '/RUN.cmd');
 if (is_string($run_text)) {
     sc_test_assert_true(
         $test,
         strpos($run_text, "version_compare(PHP_VERSION, '5.4.0'") !== false,
-        'RUN.bat should require PHP 5.4+ because it uses php -S'
+        'RUN.cmd should require PHP 5.4+ because it uses php -S'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'PHP 5.2') === false,
-        'RUN.bat should not advertise PHP 5.2 as runnable with php -S'
-    );
-}
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, "version_compare(PHP_VERSION, '5.4.0'")
-        !== false,
-        'INSTALL.cmd should require PHP 5.4+ because RUN.bat uses php -S'
+        'RUN.cmd should not advertise PHP 5.2 as runnable with php -S'
     );
 }
 $readme_text = @file_get_contents($root . '/README');
@@ -434,302 +666,80 @@ if (is_string($readme_text)) {
     );
 }
 
-$test = 'installer treats missing stunnel as preflight failure';
-$installer_text = @file_get_contents($root . '/INSTALL.cmd');
-sc_test_assert_true($test, is_string($installer_text),
-                    'INSTALL.cmd should be readable');
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, '[FAIL] stunnel.exe not found') !== false,
-        'installer should mark missing stunnel as a preflight failure'
-    );
-    $stunnel_fail_pos = strpos($installer_text,
-                               '[FAIL] stunnel.exe not found');
-    $stunnel_url_pos = strpos($installer_text,
-                              'https://www.stunnel.org/downloads.html',
-                              $stunnel_fail_pos);
-    $stunnel_err_pos = strpos($installer_text,
-                              'set /a "ERR_COUNT+=1"',
-                              $stunnel_fail_pos);
-    sc_test_assert_true(
-        $test,
-        $stunnel_fail_pos !== false && $stunnel_url_pos !== false
-        && $stunnel_err_pos !== false && $stunnel_url_pos < $stunnel_err_pos,
-        'installer should show stunnel download URL before incrementing error count'
-    );
-}
-
 $test = 'launcher reads server port without confusing proxy port';
-$run_text = @file_get_contents($root . '/RUN.bat');
+$run_text = @file_get_contents($root . '/RUN.cmd');
 sc_test_assert_true($test, is_string($run_text),
-                    'RUN.bat should be readable');
+                    'RUN.cmd should be readable');
 if (is_string($run_text)) {
     sc_test_assert_true(
         $test,
         strpos($run_text, 'sc_load_config') !== false
         && strpos($run_text, "['server']['port']") !== false,
-        'RUN.bat should read [server] port through the PHP config loader'
+        'RUN.cmd should read [server] port through the PHP config loader'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'if /i "!_k!"=="port"') === false,
-        'RUN.bat should not scan every INI port key'
+        'RUN.cmd should not scan every INI port key'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'sc_config_fatal_errors') !== false,
-        'RUN.bat should only fail CONF validation on fatal config errors'
+        'RUN.cmd should only fail CONF validation on fatal config errors'
     );
 }
 
-$test = 'installer reads server port without hardcoded 9999';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'set "SC_PORT=9999"') !== false
-        && strpos($installer_text, "['server']['port']") !== false,
-        'INSTALL.cmd should read [server] port through the PHP config loader'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Port 9999 availability') === false,
-        'INSTALL.cmd should not label the port check as always 9999'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Web URL      : http://localhost:9999/') === false,
-        'INSTALL.cmd should not print a hardcoded 9999 URL'
-    );
-}
-
-$test = 'batch scripts guard Windows build before numeric compare';
+$test = 'launcher guards Windows build before numeric compare';
 if (is_string($run_text)) {
     sc_test_assert_true(
         $test,
         strpos($run_text, 'findstr /R "^[0-9][0-9]*$"') !== false,
-        'RUN.bat should verify WIN_BUILD is numeric before GEQ'
-    );
-}
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'findstr /R "^[0-9][0-9]*$"') !== false,
-        'INSTALL.cmd should verify WIN_BUILD is numeric before GEQ'
+        'RUN.cmd should verify WIN_BUILD is numeric before GEQ'
     );
 }
 
-$test = 'installer warns instead of failing when disk space is unknown';
-sc_test_assert_true($test, is_string($installer_text),
-                    'INSTALL.cmd should be readable');
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Could not read free disk space') !== false,
-        'installer should have an unknown-disk-space warning path'
-    );
-}
-
-$test = 'installer disk check avoids CMD integer overflow';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'if %FREEBYTES% LSS 104857600') === false,
-        'installer should not compare large byte counts with IF numeric mode'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'FREEMB=%FREEBYTES% / 1048576') === false,
-        'installer should not divide large byte counts with set /a'
-    );
-}
-
-$test = 'installer preserves existing CONF.ini';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Keeping existing CONF.ini') !== false,
-        'installer should tell the user when existing config is kept'
-    );
-    $guard_pos = strpos(
-        $installer_text,
-        'if exist "%INSTALL_PATH%\\CONF.ini"'
-    );
-    $copy_pos = strpos(
-        $installer_text,
-        'copy /Y "%~dp0CONF.ini" "%INSTALL_PATH%\\"'
-    );
-    sc_test_assert_true(
-        $test,
-        $guard_pos !== false && $copy_pos !== false
-        && $guard_pos < $copy_pos,
-        'installer should guard CONF.ini copy with an existence check'
-    );
-}
-
-$test = 'installer removes copied ModernNetwork runtime state';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text,
-               'del "%INSTALL_PATH%\\ModernNetwork\\stunnel.conf"')
-        !== false,
-        'INSTALL.cmd should remove copied stunnel.conf runtime file'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text,
-               'del "%INSTALL_PATH%\\ModernNetwork\\stunnel.pid"')
-        !== false,
-        'INSTALL.cmd should remove copied stunnel.pid runtime file'
-    );
-}
-
-$test = 'installer creates shortcuts through Windows Script Host';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'VBS_FILE') !== false,
-        'installer should materialize a VBScript shortcut helper'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'cscript //nologo "%VBS_FILE%"') !== false,
-        'installer should run the shortcut helper with cscript'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'PowerShell not found. Shortcuts not created') === false,
-        'installer should not make shortcut creation depend on PowerShell'
-    );
-}
-
-$test = 'installer shortcut helper keeps install path out of echo expansion';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text,
-               'echo installPath = ws.ExpandEnvironmentStrings("%%INSTALL_PATH%%")')
-        !== false,
-        'shortcut VBScript should read INSTALL_PATH from the environment'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'echo runBat = "%INSTALL_PATH%\\RUN.bat"')
-        === false,
-        'shortcut VBScript generation should not expand INSTALL_PATH in CMD'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'echo workDir = "%INSTALL_PATH%"') === false,
-        'shortcut VBScript generation should not echo expanded workDir'
-    );
-}
-
-$test = 'batch scripts reject exclamation-mark paths before delayed expansion';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'if not "%~1"==""') !== false
-        && strpos($installer_text, 'set "INSTALL_PATH=%~1"') !== false,
-        'INSTALL.cmd should accept install path as first argument'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'setlocal DisableDelayedExpansion')
-        !== false,
-        'INSTALL.cmd should start with delayed expansion disabled'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'setlocal EnableDelayedExpansion') !== false,
-        'INSTALL.cmd should enable delayed expansion only after path checks'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Current stoneChat path contains an exclamation mark') !== false
-        && strpos($installer_text, 'Install path contains an exclamation mark') !== false,
-        'INSTALL.cmd should reject ! in source and target paths'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, ':!=') === false,
-        'INSTALL.cmd should not use CMD substring replacement to detect !'
-    );
-}
+$test = 'launcher rejects exclamation-mark paths before delayed expansion';
 if (is_string($run_text)) {
     sc_test_assert_true(
         $test,
         strpos($run_text, 'setlocal DisableDelayedExpansion') !== false,
-        'RUN.bat should start with delayed expansion disabled'
+        'RUN.cmd should start with delayed expansion disabled'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'setlocal EnableDelayedExpansion') !== false,
-        'RUN.bat should enable delayed expansion only after path checks'
+        'RUN.cmd should enable delayed expansion only after path checks'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'Current stoneChat path contains an exclamation mark') !== false,
-        'RUN.bat should reject ! in its runtime path'
+        'RUN.cmd should reject ! in its runtime path'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, ':!=') === false,
-        'RUN.bat should not use CMD substring replacement to detect !'
+        'RUN.cmd should not use CMD substring replacement to detect !'
     );
 }
 
-$test = 'batch scripts quote and validate stunnel path before use';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Stunnel path contains an exclamation mark')
-        !== false,
-        'INSTALL.cmd should reject ! in stunnel path'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'if exist "!STUNNEL_PATH!"') !== false,
-        'INSTALL.cmd should use delayed quoted stunnel path in existence check'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, '$c=sc_load_config(\'CONF.ini\');echo isset($c[\'paths\'][\'stunnel\'])')
-        !== false,
-        'INSTALL.cmd should read stunnel path through the PHP config loader when PHP is available'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'if exist "%STUNNEL_PATH%"') === false,
-        'INSTALL.cmd should not use percent-expanded stunnel path'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, '[ OK ] stunnel found: "!STUNNEL_PATH!"')
-        !== false
-        && strpos($installer_text, '[FAIL] stunnel.exe not found at: "!STUNNEL_PATH!"')
-        !== false,
-        'INSTALL.cmd should quote stunnel path in output lines'
-    );
-}
+$test = 'launcher quotes and validates stunnel path before use';
 if (is_string($run_text)) {
     sc_test_assert_true(
         $test,
         strpos($run_text, 'Stunnel path contains an exclamation mark')
         !== false,
-        'RUN.bat should reject ! in stunnel path'
+        'RUN.cmd should reject ! in stunnel path'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, 'if exist "!STUNNEL_PATH!"') !== false,
-        'RUN.bat should use delayed quoted stunnel path in existence check'
+        'RUN.cmd should use delayed quoted stunnel path in existence check'
     );
     sc_test_assert_true(
         $test,
         strpos($run_text, '$c=sc_load_config(\'CONF.ini\');echo isset($c[\'paths\'][\'stunnel\'])')
         !== false,
-        'RUN.bat should read stunnel path through the PHP config loader when PHP is available'
+        'RUN.cmd should read stunnel path through the PHP config loader when PHP is available'
     );
     sc_test_assert_true(
         $test,
@@ -737,44 +747,7 @@ if (is_string($run_text)) {
         !== false
         && strpos($run_text, '[FAIL] stunnel.exe not found at: "!STUNNEL_PATH!"')
         !== false,
-        'RUN.bat should quote stunnel path in output lines'
-    );
-}
-
-$test = 'installer backend init does not validate placeholder template';
-if (is_string($installer_text)) {
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text,
-               'Server\\install.php" --init-history --init-langs --init-login-log')
-        !== false,
-        'INSTALL.cmd should run install.php with non-validating init flags'
-    );
-    sc_test_assert_true(
-        $test,
-        strpos($installer_text, 'Server\\install.php"') !== false
-        && strpos($installer_text, 'php "%INSTALL_PATH%\\Server\\install.php"'
-                  . "\n") === false,
-        'INSTALL.cmd should not run install.php default --all during install'
-    );
-}
-$install_php = @file_get_contents($root . '/Server/install.php');
-sc_test_assert_true($test, is_string($install_php),
-                    'Server/install.php should be readable');
-if (is_string($install_php)) {
-    sc_test_assert_true(
-        $test,
-        strpos($install_php, "'--init-login-log'") !== false,
-        'install.php should expose a login-log-only init flag'
-    );
-}
-
-$test = 'install.php generated config stub is parseable';
-if (is_string($install_php)) {
-    sc_test_assert_true(
-        $test,
-        strpos($install_php, 'label = OpenAI (ChatGPT)') === false,
-        'generated CONF.ini stub should not contain unquoted parenthesized label'
+        'RUN.cmd should quote stunnel path in output lines'
     );
 }
 

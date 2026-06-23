@@ -63,6 +63,7 @@ if (function_exists('sc_strict_environment_check')) {
 if (!function_exists('sc_load_providers')) {
     require_once dirname(__FILE__) . '/../config.php';
 }
+require_once dirname(__FILE__) . '/../auth.php';
 if (!function_exists('sc_llm_chat')) {
     require_once dirname(__FILE__) . '/../llm.php';
 }
@@ -182,6 +183,7 @@ if (!function_exists('sc_api_providers_bool')) {
 if (!function_exists('sc_api_providers_normalize')) {
     function sc_api_providers_normalize($p, $defaults) {
         $id       = isset($p['id'])       ? (string)$p['id']       : '';
+        $model_id = isset($p['model_id']) ? (string)$p['model_id'] : '';
         $label    = isset($p['label'])    ? (string)$p['label']    : '';
         $type     = isset($p['type'])     ? (string)$p['type']     : '';
         $model    = isset($p['model'])    ? (string)$p['model']    : '';
@@ -216,6 +218,7 @@ if (!function_exists('sc_api_providers_normalize')) {
 
         return array(
             'id'           => $id,
+            'model_id'     => $model_id,
             'display_name' => $display,
             'label'        => $display,
             'type'         => $type,
@@ -283,6 +286,28 @@ if (!function_exists('sc_api_providers_load_all')) {
             $list[] = $row;
         }
         return array('raw' => $raw, 'by_id' => $by_id, 'list' => $list);
+    }
+}
+
+if (!function_exists('sc_api_providers_cookie_context')) {
+    function sc_api_providers_cookie_context($cfg) {
+        $name = 'sc_auth';
+        if (is_array($cfg) && isset($cfg['auth']['cookie_name'])
+            && (string)$cfg['auth']['cookie_name'] !== '') {
+            $name = (string)$cfg['auth']['cookie_name'];
+        }
+        $token = '';
+        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
+            $token = $_COOKIE[$name];
+        }
+        if ($token === '' && isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
+            $token = $_COOKIE['sc_session'];
+        }
+        if ($token === '' || !function_exists('sc_auth_token_context')) {
+            return array('ok' => false, 'username' => '');
+        }
+        return sc_auth_token_context($token, $cfg);
     }
 }
 
@@ -412,6 +437,24 @@ $loaded = sc_api_providers_load_all($ini_path, $cfg);
 $raw    = $loaded['raw'];
 $list   = $loaded['list'];
 $by_id  = $loaded['by_id'];
+
+$ctx = sc_api_providers_cookie_context($cfg);
+if (empty($ctx['ok'])) {
+    sc_api_providers_emit_json(array('ok' => false,
+                                     'error' => 'auth_required'));
+    exit;
+}
+$username = isset($ctx['username']) ? (string)$ctx['username'] : '';
+if (function_exists('sc_auth_filter_providers')) {
+    $raw = sc_auth_filter_providers($raw, $cfg, $username);
+    $list = sc_auth_filter_providers($list, $cfg, $username);
+    $by_id = array();
+    for ($i = 0; $i < count($list); $i++) {
+        if (is_array($list[$i]) && isset($list[$i]['id'])) {
+            $by_id[(string)$list[$i]['id']] = $list[$i];
+        }
+    }
+}
 
 if ($method === 'POST' && $action === 'test_all') {
     /* 3 seconds per call (label only), 5 seconds total (hard cap). */

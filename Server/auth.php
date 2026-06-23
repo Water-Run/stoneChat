@@ -16,6 +16,9 @@
  *
  * Public helpers (sc_-prefixed, function_exists guarded):
  *   sc_auth_check_password($pw, $cfg)   verify password (constant-time)
+ *   sc_auth_login_user($pw, $cfg)       resolve username by password
+ *   sc_auth_token_context($token,$cfg)  verify token and return user context
+ *   sc_auth_provider_allowed(...)       provider access by user entry
  *   sc_auth_is_locked($ip, $cfg)        is the IP currently locked out?
  *   sc_auth_record_failure($ip, $cfg)   increment the IP's failure count
  *   sc_auth_record_success($ip)         clear the IP's failure count
@@ -24,7 +27,7 @@
  *   sc_auth_log_login($cfg, $r, $ip)    log wrapper (textual result)
  *   sc_auth_reset_lock($cfg)            reset all lockouts
  *   sc_auth_clear_failures($cfg)        alias of reset_lock
- *   sc_auth_generate_token($cfg)        signed session token
+ *   sc_auth_generate_token($cfg,$user) signed session token
  *   sc_auth_verify_token($token, $cfg)  verify a stateless token
  *
  * PHP 5.2 compatible.
@@ -80,6 +83,180 @@ if (!function_exists('sc_auth_safe_eq')) {
             $diff |= ($ca ^ $cb);
         }
         return ($diff === 0);
+    }
+}
+
+/* sc_auth_truthy($value, $fallback)
+ *   Old INI files store booleans as text. Keep parsing tiny and explicit. */
+if (!function_exists('sc_auth_truthy')) {
+    function sc_auth_truthy($value, $fallback) {
+        if (is_bool($value)) {
+            return $value;
+        }
+        $v = strtolower(trim((string)$value));
+        if ($v === '1' || $v === 'true' || $v === 'yes' || $v === 'on') {
+            return true;
+        }
+        if ($v === '0' || $v === 'false' || $v === 'no' || $v === 'off') {
+            return false;
+        }
+        return (bool)$fallback;
+    }
+}
+
+/* sc_auth_config_users($cfg)
+ *   Read [User NAME] sections. NAME is the login/display username.
+ *   Rights live directly under the same section. */
+if (!function_exists('sc_auth_config_users')) {
+    function sc_auth_config_users($cfg) {
+        $out = array();
+        if (!is_array($cfg)) {
+            return $out;
+        }
+        foreach ($cfg as $section => $row) {
+            if (!is_string($section) || !is_array($row)) {
+                continue;
+            }
+            if (!preg_match('/^User[ \t]+(.+)$/i', $section, $m)) {
+                continue;
+            }
+            $username = trim((string)$m[1]);
+            $password = isset($row['password']) ? (string)$row['password'] : '';
+            $active   = isset($row['active'])
+                        ? sc_auth_truthy($row['active'], false) : false;
+            $allow_config = isset($row['allow_config'])
+                            ? sc_auth_truthy($row['allow_config'], false)
+                            : false;
+            $allow_models = isset($row['allow_models'])
+                            ? trim((string)$row['allow_models']) : '';
+            $out[] = array(
+                'username'        => $username,
+                'password'        => $password,
+                'active'          => $active,
+                'allow_config'    => $allow_config,
+                'allow_models'    => $allow_models,
+                'section'         => $section,
+            );
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('sc_auth_has_config_users')) {
+    function sc_auth_has_config_users($cfg) {
+        $users = sc_auth_config_users($cfg);
+        return !empty($users);
+    }
+}
+
+/* sc_auth_find_user_by_password($password, $cfg)
+ *   Match the password to a configured [User NAME]. No old shared-password
+ *   fallback: users are now the only login model. */
+if (!function_exists('sc_auth_find_user_by_password')) {
+    function sc_auth_find_user_by_password($password, $cfg) {
+        $none = array('ok' => false, 'username' => '', 'password' => '');
+        if (!is_string($password) || !is_array($cfg)) {
+            return $none;
+        }
+        $users = sc_auth_config_users($cfg);
+        $match = null;
+        for ($i = 0; $i < count($users); $i++) {
+            $u = $users[$i];
+            $ok = !empty($u['active'])
+                  && sc_auth_safe_eq($password, (string)$u['password']);
+            if ($ok && $match === null) {
+                $match = $u;
+            }
+        }
+        if ($match !== null) {
+            $match['ok'] = true;
+            return $match;
+        }
+        return $none;
+    }
+}
+
+if (!function_exists('sc_auth_find_user_by_name')) {
+    function sc_auth_find_user_by_name($username, $cfg) {
+        $users = sc_auth_config_users($cfg);
+        for ($i = 0; $i < count($users); $i++) {
+            if ((string)$users[$i]['username'] === (string)$username) {
+                return $users[$i];
+            }
+        }
+        return null;
+    }
+}
+
+if (!function_exists('sc_auth_can_edit_config')) {
+    function sc_auth_can_edit_config($cfg, $username) {
+        $user = sc_auth_find_user_by_name($username, $cfg);
+        return is_array($user) && !empty($user['active'])
+            && !empty($user['allow_config']);
+    }
+}
+
+if (!function_exists('sc_auth_provider_allowed')) {
+    function sc_auth_provider_allowed($cfg, $provider_id, $username) {
+        $model_id = (string)$provider_id;
+        if ($model_id === '') {
+            return false;
+        }
+        $user = sc_auth_find_user_by_name($username, $cfg);
+        if (!is_array($user) || empty($user['active'])) {
+            return false;
+        }
+        $text = isset($user['allow_models'])
+                ? trim((string)$user['allow_models']) : '';
+        if ($text === '*') {
+            return true;
+        }
+        if ($text === '') {
+            return false;
+        }
+        $list = explode(',', $text);
+        for ($i = 0; $i < count($list); $i++) {
+            if (trim((string)$list[$i]) === $model_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+if (!function_exists('sc_auth_provider_model_id')) {
+    function sc_auth_provider_model_id($provider) {
+        if (!is_array($provider)) {
+            return '';
+        }
+        if (isset($provider['model_id'])
+            && trim((string)$provider['model_id']) !== '') {
+            return trim((string)$provider['model_id']);
+        }
+        if (isset($provider['id']) && trim((string)$provider['id']) !== '') {
+            return trim((string)$provider['id']);
+        }
+        return '';
+    }
+}
+
+if (!function_exists('sc_auth_filter_providers')) {
+    function sc_auth_filter_providers($providers, $cfg, $username) {
+        $out = array();
+        if (!is_array($providers)) {
+            return $out;
+        }
+        for ($i = 0; $i < count($providers); $i++) {
+            $p = $providers[$i];
+            if (!is_array($p)) {
+                continue;
+            }
+            $model_id = sc_auth_provider_model_id($p);
+            if (sc_auth_provider_allowed($cfg, $model_id, $username)) {
+                $out[] = $p;
+            }
+        }
+        return $out;
     }
 }
 
@@ -181,15 +358,8 @@ if (!function_exists('sc_auth_sanitize_log_value')) {
  *   Constant-time compare against cfg[auth][password]. */
 if (!function_exists('sc_auth_check_password')) {
     function sc_auth_check_password($password, $cfg) {
-        if (!is_string($password) || !is_array($cfg)) {
-            return false;
-        }
-        $expected = '';
-        if (isset($cfg['auth']) && is_array($cfg['auth'])
-            && isset($cfg['auth']['password'])) {
-            $expected = (string)$cfg['auth']['password'];
-        }
-        return sc_auth_safe_eq($password, $expected);
+        $user = sc_auth_find_user_by_password($password, $cfg);
+        return !empty($user['ok']);
     }
 }
 
@@ -312,10 +482,12 @@ if (!function_exists('sc_auth_login')) {
             sc_auth_log_attempt($ip, false, $cfg);
             return array('ok' => false, 'error' => 'locked');
         }
-        if (sc_auth_check_password($password, $cfg)) {
+        $user = sc_auth_find_user_by_password($password, $cfg);
+        if (!empty($user['ok'])) {
             sc_auth_record_success($ip);
             sc_auth_log_attempt($ip, true, $cfg);
-            return array('ok' => true, 'error' => '');
+            return array('ok' => true, 'error' => '',
+                         'username' => $user['username']);
         }
         sc_auth_record_failure($ip, $cfg);
         sc_auth_log_attempt($ip, false, $cfg);
@@ -353,14 +525,55 @@ if (!function_exists('sc_auth_clear_failures')) {
     }
 }
 
-/* sc_auth_generate_token($cfg)
- *   Build an opaque signed session token (prefix "scv1:"). */
+/* sc_auth_generate_token($cfg, $user)
+ *   Build a signed session token. The token carries only username;
+ *   rights are re-read from CONF.ini on each request. */
 if (!function_exists('sc_auth_generate_token')) {
-    function sc_auth_generate_token($cfg) {
-        $password = (is_array($cfg) && isset($cfg['auth']['password']))
-                    ? (string)$cfg['auth']['password'] : '';
+    function sc_auth_generate_token($cfg, $user = null) {
+        if (!is_array($user)) {
+            $user = array();
+        }
+        $username = isset($user['username']) ? (string)$user['username'] : 'User';
+        $secret = isset($user['password']) ? (string)$user['password'] : '';
         $ts = time();
-        return 'scv1:' . $ts . ':' . md5($ts . '|' . $password);
+        $sig = md5($ts . '|' . $username . '|' . $secret);
+        return 'scv3:' . $ts . ':' . rawurlencode($username) . ':' . $sig;
+    }
+}
+
+/* sc_auth_token_context($token, $cfg)
+ *   Verify a stateless signed token and return current user metadata. */
+if (!function_exists('sc_auth_token_context')) {
+    function sc_auth_token_context($token, $cfg) {
+        $bad = array('ok' => false, 'username' => '');
+        if (!is_string($token) || strlen($token) < 6) {
+            return $bad;
+        }
+        if (strpos($token, 'scv3:') === 0) {
+            $parts = explode(':', $token);
+            if (count($parts) !== 4) {
+                return $bad;
+            }
+            $ts = $parts[1];
+            $username = rawurldecode($parts[2]);
+            $sig = $parts[3];
+            $secret = '';
+            $u = sc_auth_find_user_by_name($username, $cfg);
+            if (is_array($u) && isset($u['password'])) {
+                $secret = (string)$u['password'];
+            } else {
+                return $bad;
+            }
+            if (empty($u['active'])) {
+                return $bad;
+            }
+            $expected = md5($ts . '|' . $username . '|' . $secret);
+            if (!sc_auth_safe_eq($sig, $expected)) {
+                return $bad;
+            }
+            return array('ok' => true, 'username' => $username);
+        }
+        return $bad;
     }
 }
 
@@ -368,19 +581,7 @@ if (!function_exists('sc_auth_generate_token')) {
  *   Verify a stateless signed token. */
 if (!function_exists('sc_auth_verify_token')) {
     function sc_auth_verify_token($token, $cfg) {
-        if (!is_string($token) || strlen($token) < 6
-            || strpos($token, 'scv1:') !== 0) {
-            return false;
-        }
-        $parts = explode(':', $token);
-        if (count($parts) !== 3) {
-            return false;
-        }
-        $ts = $parts[1];
-        $sig = $parts[2];
-        $password = (is_array($cfg) && isset($cfg['auth']['password']))
-                    ? (string)$cfg['auth']['password'] : '';
-        $expected = md5($ts . '|' . $password);
-        return sc_auth_safe_eq($sig, $expected);
+        $ctx = sc_auth_token_context($token, $cfg);
+        return !empty($ctx['ok']);
     }
 }

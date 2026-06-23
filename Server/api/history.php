@@ -26,7 +26,7 @@
  *                                body out: {ok:true}
  *
  * All actions require a valid session cookie (validated against
- * cfg[auth][password]). Missing/invalid cookies return 401
+ * [User NAME] passwords). Missing/invalid cookies return 401
  * {ok:false, error:'auth_required'}. Every chat id is checked with
  * sc_history_validate_id() before any disk operation; bad ids
  * return 400 {ok:false, error:'bad_id'}.
@@ -113,12 +113,13 @@ if (!function_exists('sc_api_history_load_cfg')) {
     }
 }
 
-/* sc_api_history_is_authorized($cfg)
- *   Check that the request carries a valid session cookie. */
-if (!function_exists('sc_api_history_is_authorized')) {
-    function sc_api_history_is_authorized($cfg) {
+/* sc_api_history_auth_context($cfg)
+ *   Return username for the current session cookie. */
+if (!function_exists('sc_api_history_auth_context')) {
+    function sc_api_history_auth_context($cfg) {
+        $bad = array('ok' => false, 'username' => '');
         if (!is_array($cfg)) {
-            return false;
+            return $bad;
         }
         $name = 'sc_auth';
         if (isset($cfg['auth']['cookie_name'])
@@ -134,15 +135,21 @@ if (!function_exists('sc_api_history_is_authorized')) {
             $token = $_COOKIE['sc_session'];
         }
         if ($token === '') {
-            return false;
+            return $bad;
         }
-        if (function_exists('sc_auth_verify_token')) {
-            return sc_auth_verify_token($token, $cfg);
+        if (function_exists('sc_auth_token_context')) {
+            return sc_auth_token_context($token, $cfg);
         }
-        if (strlen($token) < 6 || strpos($token, 'scv1:') !== 0) {
-            return false;
-        }
-        return true;
+        return $bad;
+    }
+}
+
+/* sc_api_history_is_authorized($cfg)
+ *   Check that the request carries a valid session cookie. */
+if (!function_exists('sc_api_history_is_authorized')) {
+    function sc_api_history_is_authorized($cfg) {
+        $ctx = sc_api_history_auth_context($cfg);
+        return !empty($ctx['ok']);
     }
 }
 
@@ -283,11 +290,35 @@ if (!function_exists('sc_api_history_handle_get')) {
 /* sc_api_history_handle_new($body)
  *   Create a new conversation and return its id. */
 if (!function_exists('sc_api_history_handle_new')) {
-    function sc_api_history_handle_new($body) {
+    function sc_api_history_handle_new($body, $cfg) {
         if (!function_exists('sc_history_create')) {
             return array('ok' => false, 'error' => 'history_unavailable');
         }
         $provider = sc_api_history_str($body, 'provider_id', '');
+        $ctx = sc_api_history_auth_context($cfg);
+        if ($provider !== '' && !empty($ctx['ok'])
+            && function_exists('sc_auth_provider_allowed')) {
+            $username = isset($ctx['username']) ? (string)$ctx['username'] : '';
+            $model_id = $provider;
+            if (function_exists('sc_load_providers')) {
+                $rows = sc_load_providers(dirname(__FILE__) . DIRECTORY_SEPARATOR
+                    . '..' . DIRECTORY_SEPARATOR . '..'
+                    . DIRECTORY_SEPARATOR . 'CONF.ini');
+                if (is_array($rows)) {
+                    for ($i = 0; $i < count($rows); $i++) {
+                        if (isset($rows[$i]['id'])
+                            && (string)$rows[$i]['id'] === $provider
+                            && function_exists('sc_auth_provider_model_id')) {
+                            $model_id = sc_auth_provider_model_id($rows[$i]);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!sc_auth_provider_allowed($cfg, $model_id, $username)) {
+                return array('ok' => false, 'error' => 'provider_not_allowed');
+            }
+        }
         $model    = sc_api_history_str($body, 'model', '');
         $new_id   = sc_history_create($provider, $model);
         if (!is_string($new_id) || $new_id === '') {
@@ -424,7 +455,7 @@ if ($method === 'POST') {
     }
 
     if ($action === 'new' || $action === 'create') {
-        sc_api_history_emit(200, sc_api_history_handle_new($body));
+        sc_api_history_emit(200, sc_api_history_handle_new($body, $cfg));
     }
     if ($action === 'save' || $action === 'append') {
         sc_api_history_emit(200, sc_api_history_handle_save($body));

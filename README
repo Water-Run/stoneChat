@@ -13,33 +13,19 @@ https://www.stunnel.org/downloads.html
 Download / Clone:
   Clone the repository or download the ZIP.
   Before starting, copy `CONF_SMP.INI` to `CONF.ini` and edit it to set
-  your API keys, password, and providers (e.g. OpenAI, Minimax, etc.).
-
-Install (Optional):
-  Run INSTALL.cmd. It checks your environment (PHP 5.4+, stunnel, disk
-  space, write permissions), copies all files to the chosen folder
-  (default: C:\stoneChat), creates HISTORY\ for chat logs, and adds a
-  Desktop shortcut and a Start Menu entry pointing to RUN.bat.
-  (If CONF.ini is missing, the installer will automatically copy
-  CONF_SMP.INI to CONF.ini for you).
+  your users, model rights, API keys, and providers.
 
 To run directly:
-  Double-click RUN.bat. It performs the same pre-flight checks and starts
-  the local web server. If CONF.ini is missing, RUN.bat will also create
+  Double-click RUN.cmd. It performs pre-flight checks and starts
+  the local web server. If CONF.ini is missing, RUN.cmd will also create
   one from the CONF_SMP.INI template.
-
-Uninstall:
-  Double-click UNINSTALL.cmd from any location (install folder or
-  download folder). It reads the Desktop shortcut to find the real
-  install path, stops the PHP server, removes the Desktop and Start
-  Menu shortcuts, then deletes the install folder. Type YES when
-  prompted to confirm. If no shortcut is found it falls back to the
-  folder where UNINSTALL.cmd lives.
 
 Then visit it in your browser. The default address is:
   http://localhost:9999
 
-You need to edit CONF.ini according to the comments to configure the LLM and other settings -- it is very simple, just follow the comments. Placeholder values like YOUR_PASSWORD_HERE and YOUR_*_API_KEY_HERE are now rejected by the validator: replace them with real secrets before starting the server.
+You need to edit CONF.ini according to the comments to configure users,
+models, providers, and other settings. The launcher validates CONF.ini
+before starting so common mistakes are caught early.
 
 stoneChat is open-sourced under WTFPL at:
 https://github.com/Water-Run/stoneChat

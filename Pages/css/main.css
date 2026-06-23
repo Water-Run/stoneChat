@@ -348,8 +348,65 @@ li {
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 12px;
   color: #333;
-  white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.chat-messages .msg-body p,
+.chat-messages .msg-body .md-p {
+  margin: 0 0 6px 0;
+  padding: 0;
+  white-space: pre-wrap;
+}
+
+.chat-messages .msg-body h1,
+.chat-messages .msg-body h2,
+.chat-messages .msg-body h3 {
+  margin: 6px 0 4px 0;
+  padding: 0 0 2px 0;
+  border-bottom: 1px solid #ccc;
+  font-size: 13px;
+  font-weight: bold;
+  color: #003366;
+}
+
+.chat-messages .msg-body ul,
+.chat-messages .msg-body ol,
+.chat-messages .msg-body .md-list {
+  margin: 0 0 6px 18px;
+  padding: 0;
+}
+
+.chat-messages .msg-body li {
+  margin: 0 0 2px 0;
+  padding: 0;
+}
+
+.chat-messages .msg-body code,
+.chat-messages .msg-body .md-code {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  background: #ece8df;
+  border: 1px solid #ccc;
+  padding: 0 2px;
+}
+
+.chat-messages .msg-body pre,
+.chat-messages .msg-body .md-pre {
+  margin: 4px 0 6px 0;
+  padding: 5px;
+  border: 1px solid #888;
+  background: #f4f1ea;
+  overflow: auto;
+  white-space: pre;
+}
+
+.chat-messages .msg-body pre code,
+.chat-messages .msg-body .md-codeblock {
+  display: block;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  white-space: pre;
 }
 
 .chat-messages .msg-actions {
@@ -677,9 +734,37 @@ select {
   color: #666;
   line-height: 20px;
 }
+.input-area .input-toolbar .send-hint {
+  float: left;
+  margin-right: 8px;
+  font-size: 11px;
+  color: #333333;
+  line-height: 20px;
+  padding-left: 6px;
+  border-left: 1px solid #aaa;
+}
 .input-area .input-toolbar .btn {
   float: right;
   margin-left: 4px;
+}
+.user-mark {
+  float: right;
+  clear: right;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border: 1px solid #808080;
+  background: #ece9d8;
+  color: #333333;
+  font-size: 11px;
+}
+.chat-messages .msg-error {
+  margin-top: 4px;
+  padding: 3px 4px;
+  border: 1px solid #800000;
+  background: #ffffff;
+  color: #800000;
+  font-weight: bold;
+  font-size: 11px;
 }
 .input-area .input-toolbar .send-button { font-weight: bold; }
 .sidebar-footer {

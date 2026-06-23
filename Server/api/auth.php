@@ -12,7 +12,8 @@
  *   { "action": "check"  }
  *
  * Responses (always JSON, Content-Type: application/json; charset=UTF-8):
- *   login success     { "ok": true,  "lang": "<code>" }
+ *   login success     { "ok": true,  "lang": "<code>",
+ *                       "username": "<name>" }
  *   login wrong pwd   { "ok": false, "error": "invalid",
  *                       "attempts_left": <int> }
  *   login locked out  { "ok": false, "error": "locked",
@@ -88,12 +89,12 @@ if (!function_exists('sc_api_auth_cookie_params')) {
     }
 }
 
-/* sc_api_auth_cookie_value($cfg)
+/* sc_api_auth_cookie_value($cfg, $user)
  *   Build a signed session cookie value (opaque, "scv1:" prefix). */
 if (!function_exists('sc_api_auth_cookie_value')) {
-    function sc_api_auth_cookie_value($cfg) {
+    function sc_api_auth_cookie_value($cfg, $user) {
         if (function_exists('sc_auth_generate_token')) {
-            return sc_auth_generate_token($cfg);
+            return sc_auth_generate_token($cfg, $user);
         }
         $r1 = function_exists('mt_rand') ? mt_rand() : rand();
         $r2 = function_exists('mt_rand') ? mt_rand() : rand();
@@ -102,13 +103,13 @@ if (!function_exists('sc_api_auth_cookie_value')) {
     }
 }
 
-/* sc_api_auth_set_cookie($cfg)
+/* sc_api_auth_set_cookie($cfg, $user)
  *   Issue the HttpOnly session cookie. Mirrors the value into
  *   $_COOKIE so a follow-up "check" in the same request sees it. */
 if (!function_exists('sc_api_auth_set_cookie')) {
-    function sc_api_auth_set_cookie($cfg) {
+    function sc_api_auth_set_cookie($cfg, $user) {
         $params = sc_api_auth_cookie_params($cfg);
-        $value  = sc_api_auth_cookie_value($cfg);
+        $value  = sc_api_auth_cookie_value($cfg, $user);
         $expire = ($params['expires'] > 0) ? (time() + $params['expires']) : 0;
         /* PHP 5.2: name, value, expire, path, domain, secure, httponly */
         setcookie($params['name'], $value, $expire, '/', '', false, true);
@@ -128,22 +129,31 @@ if (!function_exists('sc_api_auth_clear_cookie')) {
     }
 }
 
+/* sc_api_auth_cookie_context($cfg)
+ *   Return the current authenticated user context, or ok=false. */
+if (!function_exists('sc_api_auth_cookie_context')) {
+    function sc_api_auth_cookie_context($cfg) {
+        $params = sc_api_auth_cookie_params($cfg);
+        if (!isset($_COOKIE[$params['name']])) {
+            return array('ok' => false, 'username' => '');
+        }
+        $val = (string)$_COOKIE[$params['name']];
+        if (function_exists('sc_auth_token_context')) {
+            return sc_auth_token_context($val, $cfg);
+        }
+        if (strlen($val) < 6 || strpos($val, 'scv1:') !== 0) {
+            return array('ok' => false, 'username' => '');
+        }
+        return array('ok' => true, 'username' => 'User');
+    }
+}
+
 /* sc_api_auth_verify_cookie($cfg)
  *   Decide whether the current request carries a valid session cookie. */
 if (!function_exists('sc_api_auth_verify_cookie')) {
     function sc_api_auth_verify_cookie($cfg) {
-        $params = sc_api_auth_cookie_params($cfg);
-        if (!isset($_COOKIE[$params['name']])) {
-            return false;
-        }
-        $val = (string)$_COOKIE[$params['name']];
-        if (function_exists('sc_auth_verify_token')) {
-            return sc_auth_verify_token($val, $cfg);
-        }
-        if (strlen($val) < 6 || strpos($val, 'scv1:') !== 0) {
-            return false;
-        }
-        return true;
+        $ctx = sc_api_auth_cookie_context($cfg);
+        return !empty($ctx['ok']);
     }
 }
 
@@ -285,17 +295,25 @@ if (!function_exists('sc_api_auth_handle_login')) {
                 'locked_until' => sc_api_auth_locked_until($ip, $cfg),
             );
         }
-        if (sc_auth_check_password($password, $cfg)) {
-            sc_auth_record_success($ip);
-            sc_auth_log_attempt($ip, true, $cfg);
-            sc_api_auth_set_cookie($cfg);
+        $login = sc_auth_login($password, $cfg);
+        if (!empty($login['ok'])) {
+            sc_api_auth_set_cookie($cfg, $login);
             return array(
-                'ok'   => true,
-                'lang' => sc_i18n_current_lang('en'),
+                'ok'       => true,
+                'lang'     => sc_i18n_current_lang('en'),
+                'username' => isset($login['username'])
+                              ? (string)$login['username'] : 'User',
             );
         }
-        sc_auth_record_failure($ip, $cfg);
-        sc_auth_log_attempt($ip, false, $cfg);
+        if (isset($login['error']) && $login['error'] === 'locked') {
+            sc_api_auth_set_status(429);
+            return array(
+                'ok'           => false,
+                'error'        => 'locked',
+                'locked'       => true,
+                'locked_until' => sc_api_auth_locked_until($ip, $cfg),
+            );
+        }
         return array(
             'ok'            => false,
             'error'         => 'invalid',
@@ -317,10 +335,13 @@ if (!function_exists('sc_api_auth_handle_logout')) {
  *   "check" action handler. Returns the current session state. */
 if (!function_exists('sc_api_auth_handle_check')) {
     function sc_api_auth_handle_check($cfg) {
-        if (sc_api_auth_verify_cookie($cfg)) {
+        $ctx = sc_api_auth_cookie_context($cfg);
+        if (!empty($ctx['ok'])) {
             return array(
-                'ok'   => true,
-                'lang' => sc_i18n_current_lang('en'),
+                'ok'       => true,
+                'lang'     => sc_i18n_current_lang('en'),
+                'username' => isset($ctx['username'])
+                              ? (string)$ctx['username'] : 'User',
             );
         }
         return array('ok' => false, 'error' => 'not_logged_in');
