@@ -131,6 +131,80 @@ if (!function_exists('sc_api_config_cookie_context')) {
     }
 }
 
+if (!function_exists('sc_api_config_add_csrf')) {
+    function sc_api_config_add_csrf($cfg, $payload) {
+        if (!is_array($payload)) {
+            $payload = array();
+        }
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        if ($session_token !== '' && function_exists('sc_auth_csrf_tokens')) {
+            $payload['csrf'] = sc_auth_csrf_tokens(
+                $session_token,
+                array('config:reload')
+            );
+        }
+        return $payload;
+    }
+}
+
+if (!function_exists('sc_api_config_read_body')) {
+    function sc_api_config_read_body() {
+        $raw = @file_get_contents('php://input');
+        if (is_string($raw) && $raw !== '') {
+            $body = json_decode($raw, true);
+            if (is_array($body)) {
+                return $body;
+            }
+        }
+        if (isset($_POST) && is_array($_POST) && !empty($_POST)) {
+            return $_POST;
+        }
+        return array();
+    }
+}
+
+if (!function_exists('sc_api_config_set_status')) {
+    function sc_api_config_set_status($status) {
+        if (headers_sent()) {
+            return;
+        }
+        $reasons = array(403 => 'Forbidden');
+        $code = (int)$status;
+        $reason = isset($reasons[$code]) ? $reasons[$code] : '';
+        $protocol = 'HTTP/1.0';
+        if (isset($_SERVER['SERVER_PROTOCOL'])
+            && is_string($_SERVER['SERVER_PROTOCOL'])
+            && $_SERVER['SERVER_PROTOCOL'] !== '') {
+            $protocol = $_SERVER['SERVER_PROTOCOL'];
+        }
+        if ($reason !== '') {
+            header($protocol . ' ' . $code . ' ' . $reason);
+        } else {
+            header($protocol . ' ' . $code);
+        }
+    }
+}
+
+if (!function_exists('sc_api_config_require_csrf')) {
+    function sc_api_config_require_csrf($cfg, $body) {
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        $posted = '';
+        if (is_array($body) && isset($body['csrf_token'])) {
+            $posted = (string)$body['csrf_token'];
+        }
+        return ($session_token !== ''
+                && function_exists('sc_auth_csrf_verify')
+                && sc_auth_csrf_verify($session_token, 'config:reload',
+                                       $posted));
+    }
+}
+
 if (!function_exists('sc_api_config_runtime_info')) {
     function sc_api_config_runtime_info() {
         $timezone = '';
@@ -198,7 +272,7 @@ if (!function_exists('sc_api_config_build_payload')) {
                 );
             }
         }
-        return array(
+        return sc_api_config_add_csrf($cfg, array(
             'title'               => $title,
             'default_lang'        => $default_lang,
             'theme'               => $theme,
@@ -212,7 +286,7 @@ if (!function_exists('sc_api_config_build_payload')) {
             'langs'               => sc_i18n_supported_langs(),
             'auth_enabled'        => sc_api_config_resolve_auth_enabled($cfg),
             'runtime'             => sc_api_config_runtime_info(),
-        );
+        ));
     }
 }
 
@@ -260,6 +334,7 @@ if (!function_exists('sc_api_config_dispatch')) {
             : 'GET';
         if ($method === 'POST') {
             $action = '';
+            $body = array();
             /* prefer ?action=... so a normal HTML form could
              * trigger it too. */
             if (isset($_GET['action']) && is_string($_GET['action'])) {
@@ -267,16 +342,21 @@ if (!function_exists('sc_api_config_dispatch')) {
             }
             /* accept {"action":"..."} in the JSON body as well. */
             if ($action === '') {
-                $raw = @file_get_contents('php://input');
-                if (is_string($raw) && $raw !== '') {
-                    $body = json_decode($raw, true);
-                    if (is_array($body) && isset($body['action'])
-                        && is_string($body['action'])) {
-                        $action = strtolower((string)$body['action']);
-                    }
+                $body = sc_api_config_read_body();
+                if (is_array($body) && isset($body['action'])
+                    && is_string($body['action'])) {
+                    $action = strtolower((string)$body['action']);
                 }
             }
             if ($action === 'reload_config' || $action === 'reload') {
+                if (!is_array($body) || empty($body)) {
+                    $body = sc_api_config_read_body();
+                }
+                $cfg = sc_load_config(sc_api_config_ini_path());
+                if (!sc_api_config_require_csrf($cfg, $body)) {
+                    sc_api_config_set_status(403);
+                    return array('ok' => false, 'error' => 'csrf_required');
+                }
                 return sc_api_config_reload();
             }
             return array('ok' => false, 'error' => 'unknown_action');

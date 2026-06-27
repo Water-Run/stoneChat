@@ -114,6 +114,7 @@ if (!function_exists('sc_api_auth_set_cookie')) {
         /* PHP 5.2: name, value, expire, path, domain, secure, httponly */
         setcookie($params['name'], $value, $expire, '/', '', false, true);
         $_COOKIE[$params['name']] = $value;
+        return $value;
     }
 }
 
@@ -154,6 +155,62 @@ if (!function_exists('sc_api_auth_verify_cookie')) {
     function sc_api_auth_verify_cookie($cfg) {
         $ctx = sc_api_auth_cookie_context($cfg);
         return !empty($ctx['ok']);
+    }
+}
+
+/* sc_api_auth_csrf_actions()
+ *   Action names used by JSON APIs for CSRF protection. */
+if (!function_exists('sc_api_auth_csrf_actions')) {
+    function sc_api_auth_csrf_actions() {
+        return array(
+            'auth:logout',
+            'chat:send',
+            'chat:name',
+            'chat:regenerate',
+            'chat:test',
+            'config:reload',
+            'history:new',
+            'history:save',
+            'history:rename',
+            'history:set_system',
+            'history:delete',
+            'providers:test_all',
+        );
+    }
+}
+
+if (!function_exists('sc_api_auth_add_csrf')) {
+    function sc_api_auth_add_csrf($cfg, $payload) {
+        if (!is_array($payload)) {
+            $payload = array();
+        }
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        if ($session_token !== '' && function_exists('sc_auth_csrf_tokens')) {
+            $payload['csrf'] = sc_auth_csrf_tokens(
+                $session_token,
+                sc_api_auth_csrf_actions()
+            );
+        }
+        return $payload;
+    }
+}
+
+if (!function_exists('sc_api_auth_require_csrf')) {
+    function sc_api_auth_require_csrf($cfg, $action, $body) {
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        $posted = '';
+        if (is_array($body) && isset($body['csrf_token'])) {
+            $posted = (string)$body['csrf_token'];
+        }
+        return ($session_token !== ''
+                && function_exists('sc_auth_csrf_verify')
+                && sc_auth_csrf_verify($session_token, $action, $posted));
     }
 }
 
@@ -305,12 +362,12 @@ if (!function_exists('sc_api_auth_handle_login')) {
                     $cfg, (string)$login['username'], $lang
                 );
             }
-            return array(
+            return sc_api_auth_add_csrf($cfg, array(
                 'ok'       => true,
                 'lang'     => $lang,
                 'username' => isset($login['username'])
                               ? (string)$login['username'] : 'User',
-            );
+            ));
         }
         if (isset($login['error']) && $login['error'] === 'locked') {
             sc_api_auth_set_status(429);
@@ -344,12 +401,12 @@ if (!function_exists('sc_api_auth_handle_check')) {
     function sc_api_auth_handle_check($cfg) {
         $ctx = sc_api_auth_cookie_context($cfg);
         if (!empty($ctx['ok'])) {
-            return array(
+            return sc_api_auth_add_csrf($cfg, array(
                 'ok'       => true,
                 'lang'     => sc_i18n_current_lang('en'),
                 'username' => isset($ctx['username'])
                               ? (string)$ctx['username'] : 'User',
-            );
+            ));
         }
         return array('ok' => false, 'error' => 'not_logged_in');
     }
@@ -375,6 +432,10 @@ if (!function_exists('sc_api_auth_dispatch')) {
             return sc_api_auth_handle_login($cfg, $body);
         }
         if ($action === 'logout') {
+            if (!sc_api_auth_require_csrf($cfg, 'auth:logout', $body)) {
+                sc_api_auth_set_status(403);
+                return array('ok' => false, 'error' => 'csrf_required');
+            }
             return sc_api_auth_handle_logout($cfg);
         }
         if ($action === 'check') {

@@ -4,8 +4,8 @@
  *
  * Single-file JSON API for chat operations. Routing is body-driven
  * via the "action" field. Every request must be POST and carry a
- * valid session cookie (validated against [User NAME] passwords in
- * constant time).
+ * valid session cookie plus action-specific csrf_token (validated
+ * against [User NAME] passwords in constant time).
  *
  * Wire format (request body, all keys action-specific):
  *
@@ -16,13 +16,16 @@
  *       - persist the new user message
  *       - dispatch to sc_llm_chat() with provider resolved from
  *         explicit provider_id, then chat meta, then first provider
- *       - persist the assistant reply (even on partial failure of
- *         the rest of the flow)
- *       - on the first turn, ask the LLM for a short chat name
- *         and write it to meta.txt via sc_history_rename()
+ *       - persist the assistant reply when the provider returns content
  *       response: { "ok": true,  "assistant": "<text>",
  *                   "chat_name": "<string, possibly empty>" }
  *                or { "ok": false, "error": "<code>" }
+ *
+ *   POST action="name"           { "chat_id": "<id>",
+ *                                  "message": "<optional seed text>" }
+ *       - ask the LLM for a short title and write it to meta.txt
+ *         via sc_history_rename()
+ *       response: { "ok": true, "chat_name": "<title>" }
  *
  *   POST action="connect_check"  { "provider_id": "<id>" }
  *       - ping the provider with a fixed "ping" message via
@@ -97,13 +100,14 @@ if (!function_exists('sc_api_chat_emit')) {
  *   Map numeric HTTP status to its canonical reason phrase. */
 if (!function_exists('sc_api_chat_status_reason')) {
     function sc_api_chat_status_reason($status) {
-        $reasons = array(
-            200 => 'OK',
-            400 => 'Bad Request',
-            401 => 'Unauthorized',
-            404 => 'Not Found',
-            405 => 'Method Not Allowed',
-            500 => 'Internal Server Error',
+            $reasons = array(
+                200 => 'OK',
+                400 => 'Bad Request',
+                401 => 'Unauthorized',
+                403 => 'Forbidden',
+                404 => 'Not Found',
+                405 => 'Method Not Allowed',
+                500 => 'Internal Server Error',
         );
         $code = (int)$status;
         return isset($reasons[$code]) ? $reasons[$code] : '';
@@ -218,6 +222,44 @@ if (!function_exists('sc_api_chat_action')) {
             $a = $body['action'];
         }
         return strtolower(trim($a));
+    }
+}
+
+if (!function_exists('sc_api_chat_csrf_action')) {
+    function sc_api_chat_csrf_action($action) {
+        $a = strtolower(trim((string)$action));
+        if ($a === 'send') {
+            return 'chat:send';
+        }
+        if ($a === 'name') {
+            return 'chat:name';
+        }
+        if ($a === 'regenerate') {
+            return 'chat:regenerate';
+        }
+        if ($a === 'connect_check' || $a === 'test') {
+            return 'chat:test';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('sc_api_chat_require_csrf')) {
+    function sc_api_chat_require_csrf($cfg, $csrf_action, $body) {
+        if ($csrf_action === '') {
+            return true;
+        }
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        $posted = '';
+        if (is_array($body) && isset($body['csrf_token'])) {
+            $posted = (string)$body['csrf_token'];
+        }
+        return ($session_token !== ''
+                && function_exists('sc_auth_csrf_verify')
+                && sc_auth_csrf_verify($session_token, $csrf_action, $posted));
     }
 }
 
@@ -1082,6 +1124,12 @@ if ($action === '') {
         || isset($body['id'])) {
         $action = 'send';
     }
+}
+
+$csrf_action = sc_api_chat_csrf_action($action);
+if (!sc_api_chat_require_csrf($cfg, $csrf_action, $body)) {
+    sc_api_chat_emit(403, array('ok' => false,
+                                'error' => 'csrf_required'));
 }
 
 $is_stream = false;

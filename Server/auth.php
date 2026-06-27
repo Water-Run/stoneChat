@@ -647,6 +647,60 @@ if (!function_exists('sc_auth_csrf_verify')) {
     }
 }
 
+/* sc_auth_csrf_tokens($session_token, $actions)
+ *   Build a map of action name => CSRF token for classic XHR clients. */
+if (!function_exists('sc_auth_csrf_tokens')) {
+    function sc_auth_csrf_tokens($session_token, $actions) {
+        $out = array();
+        if (!is_array($actions)) {
+            return $out;
+        }
+        for ($i = 0; $i < count($actions); $i++) {
+            $action = (string)$actions[$i];
+            if ($action === '') {
+                continue;
+            }
+            $token = sc_auth_csrf_token($session_token, $action);
+            if ($token !== '') {
+                $out[$action] = $token;
+            }
+        }
+        return $out;
+    }
+}
+
+/* sc_auth_cookie_name($cfg)
+ *   Shared session-cookie name resolver for API and editor code. */
+if (!function_exists('sc_auth_cookie_name')) {
+    function sc_auth_cookie_name($cfg) {
+        if (is_array($cfg) && isset($cfg['auth'])
+            && is_array($cfg['auth'])
+            && isset($cfg['auth']['cookie_name'])
+            && (string)$cfg['auth']['cookie_name'] !== '') {
+            return (string)$cfg['auth']['cookie_name'];
+        }
+        return 'sc_auth';
+    }
+}
+
+/* sc_auth_session_token_from_cookie($cfg)
+ *   Read the current session token from the configured cookie. The legacy
+ *   sc_session fallback is kept for old installs. */
+if (!function_exists('sc_auth_session_token_from_cookie')) {
+    function sc_auth_session_token_from_cookie($cfg) {
+        $name = sc_auth_cookie_name($cfg);
+        $token = '';
+        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
+            $token = $_COOKIE[$name];
+        }
+        if ($token === '' && isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
+            $token = $_COOKIE['sc_session'];
+        }
+        return $token;
+    }
+}
+
 /* sc_auth_generate_token($cfg, $user)
  *   Build a signed session token. The token carries only username;
  *   rights are re-read from CONF.ini on each request. */

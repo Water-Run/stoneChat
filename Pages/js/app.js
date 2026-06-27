@@ -97,6 +97,16 @@
         return tr('error.unknown', 'unknown');
     }
 
+    function applyConfigRights() {
+        var btn = $id('sc-open-config-btn');
+        if (!btn) { return; }
+        if (currentConfig && currentConfig.can_edit_config === true) {
+            btn.style.display = '';
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
     function formatHistoryTime(value) {
         if (!value) { return ''; }
         var s = String(value);
@@ -287,7 +297,6 @@
     function detectModernBrowser() {
         return !!(window.XMLHttpRequest
             && document.addEventListener
-            && document.querySelector
             && window.JSON);
     }
 
@@ -432,6 +441,9 @@
     // cached config.php response.
     // -------------------------------------------------------------------------
     function openConfigFile() {
+        if (!currentConfig || currentConfig.can_edit_config !== true) {
+            return;
+        }
         window.open('editor.php?open_native=1', '_blank',
                     'width=800,height=600');
     }
@@ -704,6 +716,7 @@
         if (cfgResp && cfgResp.ok && cfgResp.data) {
             currentConfig = cfgResp.data;
         }
+        applyConfigRights();
 
         var authResp = null;
         if (typeof SC.Api.checkAuth === 'function') {

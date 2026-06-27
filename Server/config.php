@@ -284,7 +284,13 @@ if (!function_exists('sc_is_placeholder_password')) {
         if ($t === '' || $t === '****') {
             return true;
         }
+        if ($t === 'admin123' || preg_match('/^gues[st]pass$/', $t)) {
+            return true;
+        }
         if (preg_match('/^YOUR_[A-Z0-9_]*_HERE$/', $t)) {
+            return true;
+        }
+        if (preg_match('/^REPLACE_WITH_[A-Z0-9_]*PASSWORD$/', $t)) {
             return true;
         }
         return false;

@@ -227,6 +227,58 @@ if (!function_exists('sc_pid_alive')) {
     }
 }
 
+/* sc_stunnel_pid_file_running($pid_path)
+ *   Check a pid file and return the stunnel PID, or false. */
+if (!function_exists('sc_stunnel_pid_file_running')) {
+    function sc_stunnel_pid_file_running($pid_path) {
+        if (!is_file($pid_path) || !is_readable($pid_path)) {
+            return false;
+        }
+        $pid = (int)trim(@file_get_contents($pid_path));
+        if ($pid <= 0) {
+            return false;
+        }
+        return sc_pid_alive($pid) ? $pid : false;
+    }
+}
+
+/* sc_stunnel_port_pid($port)
+ *   On Windows, find the PID that owns the listening proxy port. */
+if (!function_exists('sc_stunnel_port_pid')) {
+    function sc_stunnel_port_pid($port) {
+        $want = (int)$port;
+        if ($want <= 0) {
+            return 0;
+        }
+        $output = array();
+        $rc = 0;
+        @exec('netstat -ano -p tcp 2>NUL', $output, $rc);
+        if (!is_array($output) || count($output) === 0) {
+            return 0;
+        }
+        for ($i = 0; $i < count($output); $i++) {
+            $line = trim((string)$output[$i]);
+            if ($line === '' || stripos($line, 'TCP') !== 0) {
+                continue;
+            }
+            $parts = preg_split('/[ \t]+/', $line);
+            if (!is_array($parts) || count($parts) < 5) {
+                continue;
+            }
+            $local = (string)$parts[1];
+            $state = strtoupper((string)$parts[3]);
+            $pid = (int)$parts[4];
+            if ($state !== 'LISTENING' || $pid <= 0) {
+                continue;
+            }
+            if (substr($local, -strlen(':' . $want)) === ':' . $want) {
+                return $pid;
+            }
+        }
+        return 0;
+    }
+}
+
 /* sc_stunnel_is_running($pid_path)
  *   Check if the stunnel process (by PID file) is alive. */
 if (!function_exists('sc_stunnel_is_running')) {
@@ -240,21 +292,13 @@ if (!function_exists('sc_stunnel_is_running')) {
                     $port = (int)$cfg['proxy_port'];
                 }
             }
-            $fp = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
-            if ($fp !== false) {
-                fclose($fp);
-                return 999999; /* dummy PID */
+            $pid = sc_stunnel_port_pid($port);
+            if ($pid > 0 && sc_pid_alive($pid)) {
+                return $pid;
             }
             return false;
         }
-        if (!is_file($pid_path) || !is_readable($pid_path)) {
-            return false;
-        }
-        $pid = (int)trim(@file_get_contents($pid_path));
-        if ($pid <= 0) {
-            return false;
-        }
-        return sc_pid_alive($pid) ? $pid : false;
+        return sc_stunnel_pid_file_running($pid_path);
     }
 }
 
@@ -487,9 +531,15 @@ if (!function_exists('sc_http_send_raw')) {
             }
         }
         $req .= "\r\n" . $body;
-        if (@fwrite($fp, $req) === false) {
-            @fclose($fp);
-            return array('error' => 'write_failed');
+        $written = 0;
+        $req_len = strlen($req);
+        while ($written < $req_len) {
+            $n = @fwrite($fp, substr($req, $written));
+            if ($n === false || $n <= 0) {
+                @fclose($fp);
+                return array('error' => 'write_failed');
+            }
+            $written += $n;
         }
         /* read response. */
         $raw = '';

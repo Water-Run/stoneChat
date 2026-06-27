@@ -1,8 +1,8 @@
 /*
  * IE6 / XP-era frontend compatibility guard.
  *
- * Application pages must stay ES3-style. Modern-only code is allowed only
- * in modern-banner.js, where it is feature-gated for modern hosts.
+ * Application pages must stay ES3-style and classic CSS must remain inside
+ * IE6-era selector/property support.
  */
 
 const fs = require('fs');
@@ -26,6 +26,7 @@ const banned = [
   /\bPromise\b/,
   /\blocalStorage\b/,
   /\bFormData\b/,
+  /\bquerySelector\b/,
   /\.forEach\s*\(/,
   /\.map\s*\(/,
   /\.filter\s*\(/,
@@ -51,6 +52,28 @@ for (let i = 0; i < files.length; i++) {
       failures.push(file + ' contains IE6-incompatible pattern '
         + String(banned[j]));
     }
+  }
+}
+
+const css = stripComments(
+  fs.readFileSync(path.join(root, 'Pages/css/main.css'), 'utf8')
+);
+const bannedCss = [
+  /input\s*\[\s*type/i,
+  /box-sizing\s*:/i,
+  /border-radius\s*:/i,
+  /box-shadow\s*:/i,
+  /transition\s*:/i,
+  /transform\s*:/i,
+  /@keyframes/i,
+  /linear-gradient/i,
+  /display\s*:\s*(flex|grid)/i
+];
+
+for (let i = 0; i < bannedCss.length; i++) {
+  if (bannedCss[i].test(css)) {
+    failures.push('Pages/css/main.css contains XP-incompatible CSS pattern '
+      + String(bannedCss[i]));
   }
 }
 

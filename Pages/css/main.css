@@ -2,8 +2,8 @@
  * stoneChat / Pages/css/main.css
  *
  * Main stylesheet. Retro 2001-era web aesthetic, IE6 / Win XP
- * compatible. Pure CSS2.1 -- no border-radius, no box-shadow, no
- * transitions, no transforms, no @keyframes, no gradients.
+ * compatible. Pure CSS2.1 -- flat borders, solid fills, no animation,
+ * no generated effects, and no modern layout modes.
  *
  * Color palette:
  *   bg          #f4f1ea  beige page background
@@ -472,7 +472,6 @@ li {
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 12px;
   color: #333;
-  resize: none;
   margin: 0 4px 0 0;
   vertical-align: top;
 }
@@ -664,8 +663,7 @@ li {
   margin: 4px 0 2px 0;
 }
 
-.login-wrap input[type="text"],
-.login-wrap input[type="password"] {
+.login-wrap .login-input {
   width: 290px;
   padding: 2px 4px;
   border-top: 1px solid #444444;
@@ -687,8 +685,10 @@ li {
 /* -------------------------------------------------------------------------
  * Generic form controls (1px inset border look)
  * ------------------------------------------------------------------------- */
-input[type="text"],
-input[type="password"],
+.text-input,
+.password-input,
+.history-search,
+.msg-input,
 select,
 textarea {
   border-top: 1px solid #444444;
@@ -743,17 +743,15 @@ select {
 
 /* -------------------------------------------------------------------------
  * chat.htm layout additions (formerly inlined in chat.htm).
- * IE6-safe: no flexbox, no CSS3 selectors, no border-radius, no transforms.
+ * IE6-safe: table-era layout, simple class selectors, square edges.
  * The goal is to keep the 2001-era aesthetic and only define what's
  * strictly needed for the new input-toolbar / sidebar-footer / modal
  * structures that chat.htm introduces.
  * ------------------------------------------------------------------------- */
 .app-shell { width: 760px; margin: 0 auto; padding: 8px; }
 .input-area textarea.msg-input {
-  width: 100%;
+  width: 540px;
   height: 60px;
-  box-sizing: border-box;
-  -moz-box-sizing: border-box;
 }
 .input-area .input-toolbar {
   clear: both;

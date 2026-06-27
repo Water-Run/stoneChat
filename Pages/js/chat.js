@@ -143,30 +143,22 @@
     function sc_findMessagesContainer() {
         return document.getElementById('chat-messages')
             || document.getElementById('messages')
-            || (document.querySelector
-                ? document.querySelector('.chat-messages')
-                : null);
+            || sc_findByClass('chat-messages');
     }
 
     function sc_findCountdownNode() {
         return document.getElementById('countdown')
-            || (document.querySelector
-                ? document.querySelector('.input-area .countdown')
-                : null);
+            || sc_findByClass('countdown');
     }
 
     function sc_findCharCountNode() {
         return document.getElementById('char-count')
-            || (document.querySelector
-                ? document.querySelector('.char-count')
-                : null);
+            || sc_findByClass('char-count');
     }
 
     function sc_findSendHintNode() {
         return document.getElementById('send-hint')
-            || (document.querySelector
-                ? document.querySelector('.input-area .send-hint')
-                : null);
+            || sc_findByClass('send-hint');
     }
 
     function sc_findInput() {
@@ -178,8 +170,18 @@
     function sc_findButton(id, className) {
         var byId = document.getElementById(id);
         if (byId) { return byId; }
-        if (document.querySelector) {
-            return document.querySelector('.' + className);
+        return sc_findByClass(className);
+    }
+
+    function sc_findByClass(className) {
+        if (!document.getElementsByTagName) { return null; }
+        var nodes = document.getElementsByTagName('*');
+        var wanted = ' ' + className + ' ';
+        for (var i = 0; nodes && i < nodes.length; i++) {
+            var cls = nodes[i].className || '';
+            if ((' ' + cls + ' ').indexOf(wanted) !== -1) {
+                return nodes[i];
+            }
         }
         return null;
     }

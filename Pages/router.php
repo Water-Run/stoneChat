@@ -107,13 +107,6 @@ if ($sc_raw_path === '/favicon.ico') {
  * so subsequent page loads in the same browser session skip it. */
 $sc_is_modern = function_exists('sc_is_modern_windows')
                 ? sc_is_modern_windows() : false;
-if ($sc_is_modern && empty($_COOKIE['sc_modern'])) {
-    /* One year, scoped to the whole site. This cookie is deliberately
-     * readable by JS: modern-banner.js uses it to avoid showing modern
-     * decorations on old Windows with a newer browser installed. */
-    setcookie('sc_modern', '1', time() + 31536000, '/', '', false, false);
-    $_COOKIE['sc_modern'] = '1';
-}
 $sc_already_seen    = !empty($_COOKIE['sc_super_modern_seen']);
 $sc_path_for_check  = isset($_SERVER['REQUEST_URI'])
                       ? (string)$_SERVER['REQUEST_URI'] : '';

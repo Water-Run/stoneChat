@@ -468,6 +468,10 @@ if (!function_exists('sc_llm_parse_openai_response')) {
                         call_user_func($cb, $chunk, $d);
                     }
                 }
+                if ($content === '') {
+                    return array('ok' => false, 'error' => 'empty_response',
+                                 'status' => $status);
+                }
                 return array('ok' => true, 'status' => $status,
                              'content' => $content);
             }
@@ -485,6 +489,10 @@ if (!function_exists('sc_llm_parse_openai_response')) {
         $content = '';
         if (isset($data['choices'][0]['message']['content'])) {
             $content = (string)$data['choices'][0]['message']['content'];
+        }
+        if ($content === '') {
+            return array('ok' => false, 'error' => 'empty_response',
+                         'status' => $status);
         }
         return array('ok' => true, 'status' => $status, 'content' => $content);
     }
@@ -522,6 +530,10 @@ if (!function_exists('sc_llm_parse_anthropic_response')) {
                         }
                     }
                 }
+                if ($content === '') {
+                    return array('ok' => false, 'error' => 'empty_response',
+                                 'status' => $status);
+                }
                 return array('ok' => true, 'status' => $status,
                              'content' => $content);
             }
@@ -547,6 +559,10 @@ if (!function_exists('sc_llm_parse_anthropic_response')) {
                 }
             }
             $content = implode('', $parts);
+        }
+        if ($content === '') {
+            return array('ok' => false, 'error' => 'empty_response',
+                         'status' => $status);
         }
         return array('ok' => true, 'status' => $status, 'content' => $content);
     }

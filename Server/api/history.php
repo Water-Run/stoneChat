@@ -26,10 +26,11 @@
  *                                body out: {ok:true}
  *
  * All actions require a valid session cookie (validated against
- * [User NAME] passwords). Missing/invalid cookies return 401
+ * [User NAME] passwords). POST mutations and DELETE also require an
+ * action-specific csrf_token. Missing/invalid cookies return 401
  * {ok:false, error:'auth_required'}. Every chat id is checked with
- * sc_history_validate_id() before any disk operation; bad ids
- * return 400 {ok:false, error:'bad_id'}.
+ * sc_history_validate_id() before any disk operation; bad ids return
+ * 400 {ok:false, error:'bad_id'}.
  *
  * PHP 5.2 compatible (no closures, no [] array syntax, no
  * json_last_error, no http_response_code).
@@ -82,13 +83,14 @@ if (!function_exists('sc_api_history_emit')) {
  *   Map numeric HTTP status to its canonical reason phrase. */
 if (!function_exists('sc_api_history_status_reason')) {
     function sc_api_history_status_reason($status) {
-        $reasons = array(
-            200 => 'OK',
-            400 => 'Bad Request',
-            401 => 'Unauthorized',
-            404 => 'Not Found',
-            405 => 'Method Not Allowed',
-            500 => 'Internal Server Error',
+            $reasons = array(
+                200 => 'OK',
+                400 => 'Bad Request',
+                401 => 'Unauthorized',
+                403 => 'Forbidden',
+                404 => 'Not Found',
+                405 => 'Method Not Allowed',
+                500 => 'Internal Server Error',
         );
         $code = (int)$status;
         return isset($reasons[$code]) ? $reasons[$code] : '';
@@ -224,6 +226,56 @@ if (!function_exists('sc_api_history_action')) {
             return $body['action'];
         }
         return '';
+    }
+}
+
+if (!function_exists('sc_api_history_csrf_action')) {
+    function sc_api_history_csrf_action($action) {
+        $a = strtolower(trim((string)$action));
+        if ($a === 'new' || $a === 'create') {
+            return 'history:new';
+        }
+        if ($a === 'save' || $a === 'append') {
+            return 'history:save';
+        }
+        if ($a === 'rename') {
+            return 'history:rename';
+        }
+        if ($a === 'set_system') {
+            return 'history:set_system';
+        }
+        if ($a === 'delete') {
+            return 'history:delete';
+        }
+        return '';
+    }
+}
+
+if (!function_exists('sc_api_history_csrf_token_from_request')) {
+    function sc_api_history_csrf_token_from_request($body) {
+        if (is_array($body) && isset($body['csrf_token'])) {
+            return (string)$body['csrf_token'];
+        }
+        if (isset($_GET['csrf_token']) && is_string($_GET['csrf_token'])) {
+            return $_GET['csrf_token'];
+        }
+        return '';
+    }
+}
+
+if (!function_exists('sc_api_history_require_csrf')) {
+    function sc_api_history_require_csrf($cfg, $csrf_action, $body) {
+        if ($csrf_action === '') {
+            return true;
+        }
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        $posted = sc_api_history_csrf_token_from_request($body);
+        return ($session_token !== ''
+                && function_exists('sc_auth_csrf_verify')
+                && sc_auth_csrf_verify($session_token, $csrf_action, $posted));
     }
 }
 
@@ -446,6 +498,11 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $body   = sc_api_history_read_body();
     $action = sc_api_history_action($body);
+    $csrf_action = sc_api_history_csrf_action($action);
+    if (!sc_api_history_require_csrf($cfg, $csrf_action, $body)) {
+        sc_api_history_emit(403, array('ok' => false,
+                                       'error' => 'csrf_required'));
+    }
 
     /* action-specific id validation. Required for everything
      * except "new". This guards against path-traversal payloads
@@ -487,6 +544,10 @@ if ($method === 'POST') {
 
 /* 4. DELETE: always takes ?id= or ?chat_id=. */
 if ($method === 'DELETE') {
+    if (!sc_api_history_require_csrf($cfg, 'history:delete', array())) {
+        sc_api_history_emit(403, array('ok' => false,
+                                       'error' => 'csrf_required'));
+    }
     $id = '';
     if (isset($_GET['id']) && is_string($_GET['id'])) {
         $id = $_GET['id'];

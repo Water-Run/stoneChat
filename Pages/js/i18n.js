@@ -659,11 +659,20 @@
     var parts = search.split('&');
     for (var i = 0; i < parts.length; i++) {
       var pair = parts[i].split('=');
-      if (decodeURIComponent(pair[0] || '') === name) {
-        return decodeURIComponent(pair.length > 1 ? pair[1] : '');
+      var key = safeDecode(pair[0] || '');
+      if (key === name) {
+        return safeDecode(pair.length > 1 ? pair[1] : '');
       }
     }
     return null;
+  }
+
+  function safeDecode(value) {
+    try {
+      return decodeURIComponent(String(value).replace(/\+/g, ' '));
+    } catch (e) {
+      return '';
+    }
   }
 
   /* ----- Pick a valid language from ?lang= or return null ----- */

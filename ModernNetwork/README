@@ -16,4 +16,4 @@ Setup:
 2. Edit CONF.ini:
    - Set [paths] stunnel to your stunnel.exe path.
    - Set [proxy] port to the local tunnel port (default 8443).
-3. Run RUN.bat. proxy.php will launch stunnel on the first API call.
+3. Run RUN.cmd. proxy.php will launch stunnel on the first API call.

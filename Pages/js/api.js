@@ -49,6 +49,7 @@
 
     // Default per-request timeout, in milliseconds.
     var SC_TIMEOUT_MS = 30000;
+    var sc_csrfTokens = {};
 
     /* ------------------------------------------------------------------
      * Minimal JSON polyfill (IE6 / IE7)
@@ -183,6 +184,84 @@
         return url + sep + '_sc=' + (new Date()).getTime();
     }
 
+    function sc_storeCsrfTokens(payload) {
+        var src = null;
+        if (payload && typeof payload === 'object' && payload.csrf
+            && typeof payload.csrf === 'object') {
+            src = payload.csrf;
+        } else if (payload && typeof payload === 'object' && payload.data
+                   && payload.data.csrf && typeof payload.data.csrf === 'object') {
+            src = payload.data.csrf;
+        }
+        if (!src) { return; }
+        for (var k in src) {
+            if (Object.prototype.hasOwnProperty.call(src, k)
+                && typeof src[k] === 'string') {
+                sc_csrfTokens[k] = src[k];
+            }
+        }
+    }
+
+    function sc_csrfAction(endpoint, body) {
+        var ep = String(endpoint || '');
+        var action = '';
+        if (body && typeof body === 'object' && body.action !== undefined
+            && body.action !== null) {
+            action = String(body.action).toLowerCase();
+        }
+        if (ep.indexOf('auth.php') === 0 && action === 'logout') {
+            return 'auth:logout';
+        }
+        if (ep.indexOf('config.php') === 0
+            && (action === 'reload' || action === 'reload_config')) {
+            return 'config:reload';
+        }
+        if (ep.indexOf('providers.php') === 0 && action === 'test_all') {
+            return 'providers:test_all';
+        }
+        if (ep.indexOf('history.php') === 0) {
+            if (action === 'new' || action === 'create') {
+                return 'history:new';
+            }
+            if (action === 'save' || action === 'append') {
+                return 'history:save';
+            }
+            if (action === 'rename') {
+                return 'history:rename';
+            }
+            if (action === 'set_system') {
+                return 'history:set_system';
+            }
+            if (action === 'delete') {
+                return 'history:delete';
+            }
+        }
+        if (ep.indexOf('chat.php') === 0) {
+            if (action === 'send') {
+                return 'chat:send';
+            }
+            if (action === 'name') {
+                return 'chat:name';
+            }
+            if (action === 'regenerate') {
+                return 'chat:regenerate';
+            }
+            if (action === 'test' || action === 'connect_check') {
+                return 'chat:test';
+            }
+        }
+        return '';
+    }
+
+    function sc_applyCsrf(endpoint, body) {
+        var action = sc_csrfAction(endpoint, body);
+        if (action !== '' && sc_csrfTokens[action]
+            && body && typeof body === 'object') {
+            body.csrf_token = sc_csrfTokens[action];
+        }
+        return body;
+    }
+
     /* ------------------------------------------------------------------
      * Low-level synchronous request
      *
@@ -202,6 +281,9 @@
 
         var url = sc_cacheBustUrl(method, SC_API_BASE + endpoint);
         var hasBody = body !== null && body !== undefined;
+        if (hasBody) {
+            body = sc_applyCsrf(endpoint, body);
+        }
         var payload = hasBody ? sc_jsonStringify(body) : null;
 
         try {
@@ -273,6 +355,7 @@
                          error: 'invalid_json:' + result.__sc_parse_error };
             }
             parsed = result;
+            sc_storeCsrfTokens(parsed);
         }
 
         // Normalise to {ok, data, error}. If the server already speaks the
@@ -302,6 +385,9 @@
 
         var url = SC_API_BASE + endpoint;
         var hasBody = body !== null && body !== undefined;
+        if (hasBody) {
+            body = sc_applyCsrf(endpoint, body);
+        }
         var payload = hasBody ? sc_jsonStringify(body) : null;
 
         try {
@@ -433,6 +519,7 @@
                         return;
                     }
                     parsed = result;
+                    sc_storeCsrfTokens(parsed);
                 }
                 
                 if (typeof onComplete === 'function') {
@@ -508,7 +595,8 @@
         // DELETE /Server/api/history.php?id=<chatId>
         //   chatId - conversation id to remove
         deleteChat: function (chatId) {
-            return sc_request('DELETE', 'history.php?id=' + chatId, null);
+            return sc_request('POST', 'history.php',
+                              { action: 'delete', id: chatId });
         },
 
         // POST /Server/api/history.php action=rename
@@ -521,7 +609,8 @@
 
         // GET /Server/api/history.php?id=<chatId>  - load one conversation
         getChat: function (chatId) {
-            return sc_request('GET', 'history.php?id=' + chatId, null);
+            return sc_request('GET', 'history.php?id='
+                              + encodeURIComponent(chatId), null);
         },
 
         // POST /Server/api/chat.php  - send a user message (non-streaming)

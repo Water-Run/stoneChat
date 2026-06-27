@@ -309,6 +309,58 @@ if (!function_exists('sc_api_providers_cookie_context')) {
     }
 }
 
+if (!function_exists('sc_api_providers_read_body')) {
+    function sc_api_providers_read_body() {
+        $raw = @file_get_contents('php://input');
+        if (is_string($raw) && $raw !== '') {
+            $body = json_decode($raw, true);
+            if (is_array($body)) {
+                return $body;
+            }
+        }
+        if (isset($_POST) && is_array($_POST) && !empty($_POST)) {
+            return $_POST;
+        }
+        return array();
+    }
+}
+
+if (!function_exists('sc_api_providers_add_csrf')) {
+    function sc_api_providers_add_csrf($cfg, $payload) {
+        if (!is_array($payload)) {
+            $payload = array();
+        }
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        if ($session_token !== '' && function_exists('sc_auth_csrf_tokens')) {
+            $payload['csrf'] = sc_auth_csrf_tokens(
+                $session_token,
+                array('providers:test_all')
+            );
+        }
+        return $payload;
+    }
+}
+
+if (!function_exists('sc_api_providers_require_csrf')) {
+    function sc_api_providers_require_csrf($cfg, $body) {
+        $session_token = '';
+        if (function_exists('sc_auth_session_token_from_cookie')) {
+            $session_token = sc_auth_session_token_from_cookie($cfg);
+        }
+        $posted = '';
+        if (is_array($body) && isset($body['csrf_token'])) {
+            $posted = (string)$body['csrf_token'];
+        }
+        return ($session_token !== ''
+                && function_exists('sc_auth_csrf_verify')
+                && sc_auth_csrf_verify($session_token, 'providers:test_all',
+                                       $posted));
+    }
+}
+
 /* sc_api_providers_ping_one($provider, $timeout_seconds)
  *   Run a single ping chat call against a provider. Returns
  *   array('id','ok','latency_ms','error'). */
@@ -323,6 +375,13 @@ if (!function_exists('sc_api_providers_ping_one')) {
         if (!function_exists('sc_llm_chat')) {
             return array('id' => $id, 'ok' => false, 'latency_ms' => 0,
                          'error' => 'llm_unavailable');
+        }
+        if ($timeout_seconds > 0) {
+            if (!isset($provider['timeout'])
+                || (int)$provider['timeout'] <= 0
+                || (int)$provider['timeout'] > (int)$timeout_seconds) {
+                $provider['timeout'] = (int)$timeout_seconds;
+            }
         }
         $messages = array(array('role' => 'user', 'content' => 'ping'));
         $start = microtime(true);
@@ -390,8 +449,28 @@ if (!function_exists('sc_api_providers_test_all')) {
 /* sc_api_providers_emit_json($body)
  *   Emit a JSON response and terminate the request. */
 if (!function_exists('sc_api_providers_emit_json')) {
-    function sc_api_providers_emit_json($body) {
+    function sc_api_providers_emit_json($body, $status = 200) {
         if (!headers_sent()) {
+            $code = (int)$status;
+            if ($code > 0 && $code !== 200) {
+                $reason = '';
+                if ($code === 401) {
+                    $reason = 'Unauthorized';
+                } elseif ($code === 403) {
+                    $reason = 'Forbidden';
+                }
+                $protocol = 'HTTP/1.0';
+                if (isset($_SERVER['SERVER_PROTOCOL'])
+                    && is_string($_SERVER['SERVER_PROTOCOL'])
+                    && $_SERVER['SERVER_PROTOCOL'] !== '') {
+                    $protocol = $_SERVER['SERVER_PROTOCOL'];
+                }
+                if ($reason !== '') {
+                    header($protocol . ' ' . $code . ' ' . $reason);
+                } else {
+                    header($protocol . ' ' . $code);
+                }
+            }
             header('Content-Type: application/json; charset=UTF-8');
             header('Cache-Control: no-store, no-cache, must-revalidate');
             header('Pragma: no-cache');
@@ -424,9 +503,12 @@ if (is_file($ini_path) && is_readable($ini_path)
 $method = isset($_SERVER['REQUEST_METHOD'])
           ? strtoupper((string)$_SERVER['REQUEST_METHOD']) : 'GET';
 
+$body = ($method === 'POST') ? sc_api_providers_read_body() : array();
 $action = '';
 if (isset($_GET['action']) && is_string($_GET['action'])) {
     $action = strtolower(trim($_GET['action']));
+} elseif (isset($body['action']) && is_string($body['action'])) {
+    $action = strtolower(trim($body['action']));
 } elseif (isset($_POST['action']) && is_string($_POST['action'])) {
     $action = strtolower(trim($_POST['action']));
 }
@@ -439,7 +521,7 @@ $by_id  = $loaded['by_id'];
 $ctx = sc_api_providers_cookie_context($cfg);
 if (empty($ctx['ok'])) {
     sc_api_providers_emit_json(array('ok' => false,
-                                     'error' => 'auth_required'));
+                                     'error' => 'auth_required'), 401);
     exit;
 }
 $username = isset($ctx['username']) ? (string)$ctx['username'] : '';
@@ -455,18 +537,23 @@ if (function_exists('sc_auth_filter_providers')) {
 }
 
 if ($method === 'POST' && $action === 'test_all') {
-    /* 3 seconds per call (label only), 5 seconds total (hard cap). */
+    if (!sc_api_providers_require_csrf($cfg, $body)) {
+        sc_api_providers_emit_json(array('ok' => false,
+                                         'error' => 'csrf_required'), 403);
+        exit;
+    }
+    /* 3 seconds per call, 5 seconds total loop cap. */
     $results = sc_api_providers_test_all($raw, $by_id, 3, 5);
-    sc_api_providers_emit_json(array(
+    sc_api_providers_emit_json(sc_api_providers_add_csrf($cfg, array(
         'ok'      => true,
         'results' => $results,
-    ));
+    )), 200);
     exit;
 }
 
 /* default: GET-style listing (also handles GET /api/providers). */
-sc_api_providers_emit_json(array(
+sc_api_providers_emit_json(sc_api_providers_add_csrf($cfg, array(
     'ok'        => true,
     'providers' => $list,
-));
+)), 200);
 exit;
