@@ -87,7 +87,7 @@ $sc_raw_path = ($sc_raw_q === false) ? $sc_raw_req
               : substr($sc_raw_req, 0, $sc_raw_q);
 $sc_raw_path = '/' . ltrim($sc_raw_path, '/');
 if ($sc_raw_path === '/favicon.ico') {
-    $sc_fav = dirname(__FILE__) . '/../Assets/favicon.ico';
+    $sc_fav = dirname(__FILE__) . '/../Assets/logo.ico';
     if (is_file($sc_fav) && is_readable($sc_fav)) {
         header('Content-Type: image/x-icon');
         header('Content-Length: ' . filesize($sc_fav));

@@ -94,6 +94,26 @@ if (!function_exists('sc_history_set_user')) {
     }
 }
 
+if (!function_exists('sc_history_resolve_path')) {
+    function sc_history_resolve_path($path, $base_dir) {
+        if (!is_string($path) || $path === '') {
+            return '';
+        }
+        if (function_exists('sc_validate_path_resolve')) {
+            return sc_validate_path_resolve($path, $base_dir);
+        }
+        if (strlen($path) >= 2 && $path[1] === ':') {
+            return str_replace('/', '\\', $path);
+        }
+        if ($path[0] === '/' || $path[0] === '\\') {
+            return $path;
+        }
+        $base = rtrim($base_dir, '/\\');
+        $sep = (strpos($base, '\\') !== false) ? '\\' : '/';
+        return $base . $sep . str_replace('/', $sep, $path);
+    }
+}
+
 /* sc_history_apply_user_root($root)
  *   Append the current user segment to a HISTORY root when present. */
 if (!function_exists('sc_history_apply_user_root')) {
@@ -136,11 +156,9 @@ if (!function_exists('sc_history_dir')) {
                 && is_string($cfg['ui']['history_dir'])
                 && $cfg['ui']['history_dir'] !== '') {
                 $custom = $cfg['ui']['history_dir'];
-                if (function_exists('sc_resolve_path')) {
-                    $resolved = sc_resolve_path($custom, $project_root);
-                    if (is_string($resolved) && $resolved !== '') {
-                        $root = $resolved;
-                    }
+                $resolved = sc_history_resolve_path($custom, $project_root);
+                if (is_string($resolved) && $resolved !== '') {
+                    $root = $resolved;
                 }
             }
         }
@@ -164,11 +182,10 @@ if (!function_exists('sc_history_root')) {
             && is_string($cfg['ui']['history_dir'])
             && $cfg['ui']['history_dir'] !== '') {
             $base = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..';
-            if (function_exists('sc_resolve_path')) {
-                $resolved = sc_resolve_path($cfg['ui']['history_dir'], $base);
-                if (is_string($resolved) && $resolved !== '') {
-                    $root = $resolved;
-                }
+            $resolved = sc_history_resolve_path($cfg['ui']['history_dir'],
+                                                $base);
+            if (is_string($resolved) && $resolved !== '') {
+                $root = $resolved;
             }
         }
         $root = sc_history_apply_user_root($root);

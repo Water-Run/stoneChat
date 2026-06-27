@@ -581,6 +581,72 @@ if (!function_exists('sc_auth_clear_failures')) {
     }
 }
 
+/* sc_auth_token_max_age($cfg)
+ *   Server-side session-token lifetime in seconds. Prefer the configured
+ *   cookie lifetime; fall back to one day so stolen session-cookie values
+ *   cannot remain valid indefinitely. */
+if (!function_exists('sc_auth_token_max_age')) {
+    function sc_auth_token_max_age($cfg) {
+        $max = 86400;
+        if (is_array($cfg) && isset($cfg['auth'])
+            && is_array($cfg['auth'])) {
+            if (isset($cfg['auth']['token_max_age'])
+                && (int)$cfg['auth']['token_max_age'] > 0) {
+                $max = (int)$cfg['auth']['token_max_age'];
+            } elseif (isset($cfg['auth']['cookie_expires'])
+                && (int)$cfg['auth']['cookie_expires'] > 0) {
+                $max = (int)$cfg['auth']['cookie_expires'];
+            }
+        }
+        return $max;
+    }
+}
+
+/* sc_auth_csrf_token($session_token, $action)
+ *   Stateless CSRF token tied to the current session token and action.
+ *   One-hour ticks keep old form pages usable without making tokens
+ *   long-lived. */
+if (!function_exists('sc_auth_csrf_token')) {
+    function sc_auth_csrf_token($session_token, $action) {
+        $session = (string)$session_token;
+        $act = (string)$action;
+        if ($session === '' || $act === '') {
+            return '';
+        }
+        $tick = (int)floor(time() / 3600);
+        $sig = md5($tick . '|' . $act . '|' . $session);
+        return 'csrf1:' . $tick . ':' . $sig;
+    }
+}
+
+if (!function_exists('sc_auth_csrf_verify')) {
+    function sc_auth_csrf_verify($session_token, $action, $token) {
+        $session = (string)$session_token;
+        $act = (string)$action;
+        $tok = (string)$token;
+        if ($session === '' || $act === '' || $tok === '') {
+            return false;
+        }
+        if (strpos($tok, 'csrf1:') !== 0) {
+            return false;
+        }
+        $parts = explode(':', $tok);
+        if (count($parts) !== 3) {
+            return false;
+        }
+        $tick = (int)$parts[1];
+        if ($tick <= 0) {
+            return false;
+        }
+        $now_tick = (int)floor(time() / 3600);
+        if ($tick < ($now_tick - 1) || $tick > ($now_tick + 1)) {
+            return false;
+        }
+        $expected = md5($tick . '|' . $act . '|' . $session);
+        return sc_auth_safe_eq($parts[2], $expected);
+    }
+}
+
 /* sc_auth_generate_token($cfg, $user)
  *   Build a signed session token. The token carries only username;
  *   rights are re-read from CONF.ini on each request. */
@@ -627,6 +693,18 @@ if (!function_exists('sc_auth_token_context')) {
                 return $bad;
             }
             if (empty($u['active'])) {
+                return $bad;
+            }
+            if (!preg_match('/^[0-9]+$/', (string)$ts)) {
+                return $bad;
+            }
+            $ts_i = (int)$ts;
+            $now = time();
+            if ($ts_i <= 0 || $ts_i > ($now + 300)) {
+                return $bad;
+            }
+            $max_age = sc_auth_token_max_age($cfg);
+            if ($max_age > 0 && ($now - $ts_i) > $max_age) {
                 return $bad;
             }
             $expected = md5($ts . '|' . $username . '|' . $secret);

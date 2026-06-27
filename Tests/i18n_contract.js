@@ -99,6 +99,13 @@ const sameAllowed = {
   'role.assistant': true
 };
 const englishClient = tables.bundled.en;
+for (let j = 0; j < fallbackKeys.length; j++) {
+  const key = fallbackKeys[j];
+  if (englishClient[key] !== tables.fallback[key]) {
+    addFailure('BUNDLED en differs from FALLBACK_EN for ' + key);
+  }
+}
+
 for (let i = 0; i < langs.length; i++) {
   const lang = langs[i];
   if (lang === 'en') {

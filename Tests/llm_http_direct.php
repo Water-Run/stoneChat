@@ -30,6 +30,7 @@ function sc_http_send_raw($port, $method, $host, $path,
         'method' => $method,
         'host' => $host,
         'path' => $path,
+        'timeout' => $timeout,
         'connect_host' => $connect_host,
     );
     return array('status' => 200, 'body' => '{"ok":true}');
@@ -42,6 +43,7 @@ $provider = array(
     'api_key'  => 'local-key',
     'model'    => 'qwen2.5:14b',
     'api_base' => 'http://192.168.5.19:11434/v1',
+    'timeout'  => 7,
 );
 
 $resp = sc_llm_send_via_tunnel(
@@ -75,6 +77,10 @@ if (count($SC_TEST_HTTP_SENDS) !== 1) {
         $failures[] = 'expected connect host 192.168.5.19, got '
                     . $send['connect_host'];
     }
+    if ($send['timeout'] !== 7) {
+        $failures[] = 'expected provider timeout 7, got '
+                    . $send['timeout'];
+    }
     if ($send['path'] !== '/v1/chat/completions') {
         $failures[] = 'expected /v1/chat/completions, got '
                     . $send['path'];
@@ -90,6 +96,7 @@ $mock_provider = array(
     'api_key'  => 'mock-key',
     'model'    => 'mock-gpt',
     'api_base' => 'http://localhost:9998/Server/api/mock_llm.php',
+    'timeout'  => 11,
 );
 $mock_resp = sc_llm_send_via_tunnel(
     $mock_provider,
@@ -107,6 +114,10 @@ if (count($SC_TEST_HTTP_SENDS) !== 1) {
     if ($send['path'] !== '/Server/api/mock_llm.php') {
         $failures[] = 'expected mock PHP endpoint path, got '
                     . $send['path'];
+    }
+    if ($send['timeout'] !== 11) {
+        $failures[] = 'expected mock provider timeout 11, got '
+                    . $send['timeout'];
     }
 }
 if (!is_array($mock_resp) || isset($mock_resp['error'])) {

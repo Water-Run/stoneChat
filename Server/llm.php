@@ -75,6 +75,19 @@ if (!function_exists('sc_llm_max_tokens')) {
     }
 }
 
+/* sc_llm_provider_timeout($provider_config)
+ *   Socket-level timeout in seconds for one provider request. */
+if (!function_exists('sc_llm_provider_timeout')) {
+    function sc_llm_provider_timeout($provider_config) {
+        if (is_array($provider_config) && isset($provider_config['timeout'])
+            && is_numeric($provider_config['timeout'])
+            && (int)$provider_config['timeout'] > 0) {
+            return (int)$provider_config['timeout'];
+        }
+        return 60;
+    }
+}
+
 /* sc_llm_request_path($endpoint, $path_suffix)
  *   Build the HTTP path. Normal API bases are prefixes (/v1);
  *   local PHP mock endpoints are already complete files. */
@@ -243,6 +256,7 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
         $full_path = sc_llm_request_path($ep, $path_suffix);
         $body_str  = ($body === null) ? '' : (string)$body;
         $hdrs      = is_array($headers) ? $headers : array();
+        $timeout   = sc_llm_provider_timeout($provider_config);
 
         $scheme = isset($ep['scheme']) ? (string)$ep['scheme'] : 'https';
         $is_local = ($target['host'] === 'localhost'
@@ -251,7 +265,7 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
         if ($is_plain_http || $is_local) {
             $resp = sc_http_send_raw(
                 $target['port'], $method, $target['host'], $full_path,
-                $hdrs, $body_str, 60, $stream_callback,
+                $hdrs, $body_str, $timeout, $stream_callback,
                 $is_plain_http ? $target['host'] : '127.0.0.1'
             );
             /* When the target is a localhost mock and the port is
@@ -279,7 +293,7 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
             }
             $resp = sc_http_send_raw(
                 $cfg['proxy_port'], $method, $target['host'], $full_path,
-                $hdrs, $body_str, 60, $stream_callback
+                $hdrs, $body_str, $timeout, $stream_callback
             );
             /* tunnel may have died between ensure and connect; retry. */
             if (!is_array($resp)
@@ -288,7 +302,8 @@ if (!function_exists('sc_llm_send_via_tunnel')) {
                 if (sc_ensure_tunnel($target, $cfg, $modern_dir)) {
                     $resp = sc_http_send_raw(
                         $cfg['proxy_port'], $method, $target['host'],
-                        $full_path, $hdrs, $body_str, 60, $stream_callback
+                        $full_path, $hdrs, $body_str, $timeout,
+                        $stream_callback
                     );
                 }
             }

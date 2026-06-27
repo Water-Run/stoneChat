@@ -27,6 +27,29 @@ function sc_test_assert_equal($name, $expected, $actual, $message) {
     }
 }
 
+function sc_test_rmdir_recursive($dir) {
+    if (!is_string($dir) || $dir === '' || !is_dir($dir)) {
+        return;
+    }
+    $dh = @opendir($dir);
+    if ($dh === false) {
+        return;
+    }
+    while (($name = @readdir($dh)) !== false) {
+        if ($name === '.' || $name === '..') {
+            continue;
+        }
+        $path = $dir . DIRECTORY_SEPARATOR . $name;
+        if (is_dir($path)) {
+            sc_test_rmdir_recursive($path);
+        } else {
+            @unlink($path);
+        }
+    }
+    @closedir($dh);
+    @rmdir($dir);
+}
+
 /* Stub transport before loading Server/llm.php. The production file guards
  * sc_llm_send_via_tunnel with function_exists(), so this lets the test run
  * the real provider code without opening sockets. */
@@ -68,6 +91,7 @@ function sc_test_router_probe($path, $modern) {
           . '$body=ob_get_clean();' . "\n"
           . 'echo "return=" . ($r ? "true" : "false") . "\n";'
           . "\n"
+          . 'echo "body_len=" . strlen($body) . "\n";' . "\n"
           . 'echo "body=" . $body . "\n";' . "\n";
     @file_put_contents($tmp, $code);
     $php = defined('PHP_BINARY') ? PHP_BINARY : 'php';
@@ -169,6 +193,50 @@ sc_test_assert_equal($test, 'Admin',
                      ? $login_ctx['username'] : '',
                      'token built from login result should verify');
 
+$test = 'auth tokens expire on the server side';
+$ttl_cfg = $auth_cfg;
+$ttl_cfg['auth'] = array('cookie_expires' => '3600');
+$old_ts = time() - 7200;
+$old_sig = md5($old_ts . '|Admin|' . $auth_cfg['User Admin']['password']);
+$old_token = 'scv3:' . $old_ts . ':Admin:' . $old_sig;
+$old_ctx = sc_auth_token_context($old_token, $ttl_cfg);
+sc_test_assert_true($test, empty($old_ctx['ok']),
+                    'token older than configured cookie lifetime should fail');
+$fresh_ts = time();
+$fresh_sig = md5($fresh_ts . '|Admin|' . $auth_cfg['User Admin']['password']);
+$fresh_token = 'scv3:' . $fresh_ts . ':Admin:' . $fresh_sig;
+$fresh_ctx = sc_auth_token_context($fresh_token, $ttl_cfg);
+sc_test_assert_equal($test, 'Admin',
+                     isset($fresh_ctx['username'])
+                     ? $fresh_ctx['username'] : '',
+                     'fresh token within configured lifetime should pass');
+
+$test = 'config editor CSRF helpers bind token to session and action';
+sc_test_assert_true($test, function_exists('sc_auth_csrf_token'),
+                    'auth module should expose CSRF token generation');
+sc_test_assert_true($test, function_exists('sc_auth_csrf_verify'),
+                    'auth module should expose CSRF token verification');
+if (function_exists('sc_auth_csrf_token')
+    && function_exists('sc_auth_csrf_verify')) {
+    $csrf_token = sc_auth_csrf_token($admin_token, 'config_editor');
+    sc_test_assert_true(
+        $test,
+        sc_auth_csrf_verify($admin_token, 'config_editor', $csrf_token),
+        'matching token should verify'
+    );
+    sc_test_assert_true(
+        $test,
+        !sc_auth_csrf_verify($admin_token, 'other_action', $csrf_token),
+        'same token should not verify for a different action'
+    );
+    sc_test_assert_true(
+        $test,
+        !sc_auth_csrf_verify($admin_token . '-other',
+                             'config_editor', $csrf_token),
+        'same token should not verify for a different session token'
+    );
+}
+
 $test = 'auth logging applies built-in local timezone without boot_check';
 if (function_exists('date_default_timezone_set')
     && function_exists('date_default_timezone_get')) {
@@ -194,10 +262,13 @@ if (function_exists('sc_history_set_user')
     sc_history_set_user('');
     sc_test_assert_true($test,
                         $admin_root !== '' && $guest_root !== ''
+                        && strpos($admin_root, $hist_base) === 0
+                        && strpos($guest_root, $hist_base) === 0
                         && $admin_root !== $guest_root
                         && strpos($admin_root, 'Admin') !== false
                         && strpos($guest_root, 'Guest') !== false,
-                        'Admin and Guest should use different HISTORY roots');
+                        'custom history_dir should be honored per user');
+    sc_test_rmdir_recursive($hist_base);
 }
 
 $test = 'user model policy excludes configured model ids';
@@ -603,6 +674,90 @@ sc_test_assert_equal($test, true,
                      ),
                      'stream=true should enable upstream streaming');
 
+$test = 'chat send reports history write failures';
+if (function_exists('sc_history_set_user')
+    && function_exists('sc_history_chat_dir')) {
+    $history_user = 'WriteFailTest' . mt_rand(1000, 9999);
+    $chat_cfg = sc_load_config($root . '/CONF.ini');
+    if (!is_array($chat_cfg)) {
+        $chat_cfg = array();
+    }
+    sc_history_set_user($history_user);
+
+    $chat_id = 'fulluser' . mt_rand(1000, 9999);
+    $dir = sc_history_chat_dir($chat_id);
+    if ($dir !== '' && !is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
+    if ($dir !== '' && is_dir($dir)) {
+        sc_history_save_meta($chat_id, array(
+            'chat_id'     => $chat_id,
+            'provider_id' => 'MockLocal',
+            'model'       => 'mock-gpt',
+            'name'        => '',
+        ));
+        for ($i = 1; $i <= 999; $i++) {
+            @file_put_contents(
+                $dir . DIRECTORY_SEPARATOR
+                . 'user-' . sprintf('%03d', $i) . '.txt',
+                'old'
+            );
+        }
+        $send_result = sc_api_chat_handle_send(
+            $chat_cfg,
+            array('chat_id' => $chat_id,
+                  'message' => 'new message',
+                  'provider_id' => 'MockLocal')
+        );
+        sc_test_assert_true(
+            $test,
+            is_array($send_result) && empty($send_result['ok'])
+            && isset($send_result['error'])
+            && $send_result['error'] === 'history_write_failed',
+            'user-message append failure should be returned to caller'
+        );
+    }
+
+    $chat_id2 = 'fullassistant' . mt_rand(1000, 9999);
+    $dir2 = sc_history_chat_dir($chat_id2);
+    if ($dir2 !== '' && !is_dir($dir2)) {
+        @mkdir($dir2, 0777, true);
+    }
+    if ($dir2 !== '' && is_dir($dir2)) {
+        sc_history_save_meta($chat_id2, array(
+            'chat_id'     => $chat_id2,
+            'provider_id' => 'MockLocal',
+            'model'       => 'mock-gpt',
+            'name'        => '',
+        ));
+        for ($i = 1; $i <= 999; $i++) {
+            @file_put_contents(
+                $dir2 . DIRECTORY_SEPARATOR
+                . 'assistant-' . sprintf('%03d', $i) . '.txt',
+                'old'
+            );
+        }
+        $send_result2 = sc_api_chat_handle_send(
+            $chat_cfg,
+            array('chat_id' => $chat_id2,
+                  'message' => 'new message',
+                  'provider_id' => 'MockLocal')
+        );
+        sc_test_assert_true(
+            $test,
+            is_array($send_result2) && empty($send_result2['ok'])
+            && isset($send_result2['error'])
+            && $send_result2['error'] === 'history_write_failed',
+            'assistant-message append failure should be returned to caller'
+        );
+    }
+
+    $cleanup_root = dirname($root . '/HISTORY/' . $history_user
+                            . DIRECTORY_SEPARATOR . 'x');
+    sc_history_set_user('');
+    sc_test_rmdir_recursive($cleanup_root);
+}
+
 $test = 'manual title naming is a separate action';
 $chat_php = @file_get_contents($root . '/Server/api/chat.php');
 if (is_string($chat_php)) {
@@ -720,6 +875,23 @@ foreach ($runtime_files as $runtime_name => $runtime_body) {
                         'router should 404 ' . $runtime_name);
 }
 
+$test = 'router serves the bundled favicon';
+$probe = sc_test_router_probe('/favicon.ico', false);
+sc_test_assert_equal($test, 0, $probe['code'],
+                     'favicon router probe should execute');
+sc_test_assert_true($test, strpos($probe['text'], 'return=true') !== false,
+                    'router should handle favicon itself');
+sc_test_assert_true($test, preg_match('/body_len=([1-9][0-9]*)/',
+                                      $probe['text']) === 1,
+                    'favicon response should contain icon bytes');
+if (is_string($router_text)) {
+    sc_test_assert_true(
+        $test,
+        strpos($router_text, 'Assets/logo.ico') !== false,
+        'router should use the icon file that exists in Assets'
+    );
+}
+
 $test = 'modern Windows cookie is readable by modern banner';
 $router_php = @file_get_contents($root . '/Pages/router.php');
 sc_test_assert_true($test, is_string($router_php),
@@ -815,6 +987,15 @@ if (is_string($editor_text)) {
         strpos($editor_text, 'sc_auth_token_context') !== false
         && strpos($editor_text, 'sc_auth_can_edit_config') !== false,
         'editor.php should verify the auth cookie and user config right'
+    );
+    $csrf_pos = strpos($editor_text, 'sc_auth_csrf_verify');
+    $write_pos = strpos($editor_text, 'file_put_contents($ini_path');
+    sc_test_assert_true(
+        $test,
+        $csrf_pos !== false && $write_pos !== false && $csrf_pos < $write_pos
+        && strpos($editor_text, 'sc_auth_csrf_token') !== false
+        && strpos($editor_text, 'name="csrf_token"') !== false,
+        'editor.php should verify a CSRF token before saving CONF.ini'
     );
     sc_test_assert_true(
         $test,

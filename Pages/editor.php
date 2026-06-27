@@ -50,15 +50,7 @@ if (!function_exists('sc_editor_cookie_name')) {
 
 if (!function_exists('sc_editor_is_authorized')) {
     function sc_editor_is_authorized($cfg) {
-        $name = sc_editor_cookie_name($cfg);
-        $token = '';
-        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
-            $token = $_COOKIE[$name];
-        }
-        if ($token === '' && isset($_COOKIE['sc_session'])
-            && is_string($_COOKIE['sc_session'])) {
-            $token = $_COOKIE['sc_session'];
-        }
+        $token = sc_editor_session_token($cfg);
         if ($token === '' || !function_exists('sc_auth_token_context')) {
             return false;
         }
@@ -72,6 +64,21 @@ if (!function_exists('sc_editor_is_authorized')) {
             return false;
         }
         return true;
+    }
+}
+
+if (!function_exists('sc_editor_session_token')) {
+    function sc_editor_session_token($cfg) {
+        $name = sc_editor_cookie_name($cfg);
+        $token = '';
+        if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
+            $token = $_COOKIE[$name];
+        }
+        if ($token === '' && isset($_COOKIE['sc_session'])
+            && is_string($_COOKIE['sc_session'])) {
+            $token = $_COOKIE['sc_session'];
+        }
+        return $token;
     }
 }
 
@@ -101,6 +108,35 @@ if (!function_exists('sc_editor_js_string')) {
     }
 }
 
+if (!function_exists('sc_editor_validate_content')) {
+    function sc_editor_validate_content($content, $ini_path) {
+        $dir = dirname($ini_path);
+        $tmp = @tempnam($dir, 'scini');
+        if (!is_string($tmp) || $tmp === '') {
+            return false;
+        }
+        $ok = (@file_put_contents($tmp, (string)$content) !== false);
+        if (!$ok) {
+            @unlink($tmp);
+            return false;
+        }
+        $parsed = sc_load_config($tmp);
+        @unlink($tmp);
+        if (!is_array($parsed) || empty($parsed)) {
+            return false;
+        }
+        if (function_exists('sc_validate_config')
+            && function_exists('sc_config_fatal_errors')) {
+            $errors = sc_validate_config($parsed);
+            $fatal = sc_config_fatal_errors($errors);
+            if (is_array($fatal) && !empty($fatal)) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
 $ini_path = sc_editor_ini_path();
 $cfg = sc_load_config($ini_path);
 if (!is_array($cfg)) {
@@ -127,6 +163,11 @@ if (!$enabled) {
 
 $message = '';
 $message_class = '';
+$session_token = sc_editor_session_token($cfg);
+$csrf_token = '';
+if (function_exists('sc_auth_csrf_token')) {
+    $csrf_token = sc_auth_csrf_token($session_token, 'config_editor');
+}
 $open_native = (isset($_GET['open_native'])
                 && (string)$_GET['open_native'] === '1');
 if (isset($_SERVER['REQUEST_METHOD'])
@@ -141,13 +182,33 @@ if (isset($_SERVER['REQUEST_METHOD'])
     $content = str_replace(array("\r\n", "\r"), "\n", (string)$content);
     $content = str_replace("\n", "\r\n", $content);
 
-    $bytes = @file_put_contents($ini_path, $content);
-    if ($bytes !== false) {
-        $message = 'Configuration saved successfully.';
-        $message_class = 'success';
-    } else {
-        $message = 'Failed to save configuration. Check file permissions.';
+    $posted_csrf = '';
+    if (isset($_POST['csrf_token']) && is_string($_POST['csrf_token'])) {
+        $posted_csrf = $_POST['csrf_token'];
+    }
+    if (!function_exists('sc_auth_csrf_verify')
+        || !sc_auth_csrf_verify($session_token, 'config_editor',
+                                $posted_csrf)) {
+        $message = 'Security check failed. Reload the editor and try again.';
         $message_class = 'error';
+    } elseif (!sc_editor_validate_content($content, $ini_path)) {
+        $message = 'Configuration was not saved because it is not valid.';
+        $message_class = 'error';
+    } else {
+        $bytes = @file_put_contents($ini_path, $content);
+        if ($bytes !== false) {
+            $message = 'Configuration saved successfully.';
+            $message_class = 'success';
+            $cfg = sc_load_config($ini_path);
+            $session_token = sc_editor_session_token($cfg);
+            if (function_exists('sc_auth_csrf_token')) {
+                $csrf_token = sc_auth_csrf_token($session_token,
+                                                 'config_editor');
+            }
+        } else {
+            $message = 'Failed to save configuration. Check file permissions.';
+            $message_class = 'error';
+        }
     }
 }
 
@@ -244,6 +305,7 @@ function sc_editor_page_load() {
   </div>
 
   <form method="post" action="editor.php">
+    <input type="hidden" name="csrf_token" value="<?php echo sc_editor_h($csrf_token); ?>" />
     <textarea name="config_content" spellcheck="false"><?php echo sc_editor_h($content); ?></textarea>
     <div class="editor-actions">
       <button type="button" class="btn" onclick="window.close()">Close Window</button>

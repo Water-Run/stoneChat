@@ -412,6 +412,50 @@ if (!class_exists('SC_ChunkedParser')) {
     }
 }
 
+/* sc_http_decode_chunked_body($body)
+ *   Decode a complete Transfer-Encoding: chunked body for non-streaming
+ *   callers. If the body is malformed, return the original bytes so the
+ *   higher-level parser can report a normal invalid response error. */
+if (!function_exists('sc_http_decode_chunked_body')) {
+    function sc_http_decode_chunked_body($body) {
+        $src = (string)$body;
+        $len = strlen($src);
+        $pos = 0;
+        $out = '';
+        while ($pos < $len) {
+            $line_end = strpos($src, "\r\n", $pos);
+            if ($line_end === false) {
+                return $body;
+            }
+            $line = substr($src, $pos, $line_end - $pos);
+            $semi = strpos($line, ';');
+            if ($semi !== false) {
+                $line = substr($line, 0, $semi);
+            }
+            $line = trim($line);
+            if ($line === '' || preg_match('/^[0-9a-fA-F]+$/', $line) !== 1) {
+                return $body;
+            }
+            $size = hexdec($line);
+            $pos = $line_end + 2;
+            if ($size === 0) {
+                return $out;
+            }
+            if (($pos + $size) > $len) {
+                return $body;
+            }
+            $out .= substr($src, $pos, $size);
+            $pos += $size;
+            if (substr($src, $pos, 2) === "\r\n") {
+                $pos += 2;
+            } else {
+                return $body;
+            }
+        }
+        return $body;
+    }
+}
+
 /* sc_http_send_raw($port, $method, $host, $path, $headers, $body,
  *                  $timeout, $stream_callback = null,
  *                  $connect_host = '127.0.0.1')
@@ -530,6 +574,13 @@ if (!function_exists('sc_http_send_raw')) {
                 $k = trim(substr($h, 0, $c));
                 $v = trim(substr($h, $c + 1));
                 $hdrs[$k] = $v;
+            }
+        }
+        foreach ($hdrs as $hk => $hv) {
+            if (strtolower((string)$hk) === 'transfer-encoding'
+                && stripos((string)$hv, 'chunked') !== false) {
+                $body_out = sc_http_decode_chunked_body($body_out);
+                break;
             }
         }
         return array('status' => $status, 'headers' => $hdrs,

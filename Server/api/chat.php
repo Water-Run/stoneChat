@@ -537,8 +537,9 @@ if (!function_exists('sc_api_chat_handle_send')) {
         }
         /* 1. persist the user message (defensive: even an LLM crash
          *    afterwards leaves the user input on disk). */
-        if (function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'user', $message);
+        if (!function_exists('sc_history_append_message')
+            || sc_history_append_message($chat_id, 'user', $message) < 1) {
+            return array('ok' => false, 'error' => 'history_write_failed');
         }
 
         /* 2. build the LLM request and dispatch. */
@@ -573,7 +574,11 @@ if (!function_exists('sc_api_chat_handle_send')) {
         }
         if ($ok_payload && $assistant !== ''
             && function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'assistant', $assistant);
+            if (sc_history_append_message($chat_id, 'assistant',
+                                          $assistant) < 1) {
+                return array('ok' => false,
+                             'error' => 'history_write_failed');
+            }
         }
         if (!$ok_payload) {
             return array('ok' => false, 'error' => $err);
@@ -749,9 +754,13 @@ if (!function_exists('sc_api_chat_handle_regenerate')) {
         }
         $assistant = isset($result['content'])
             ? (string)$result['content'] : '';
-        if ($assistant !== ''
-            && function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'assistant', $assistant);
+        if ($assistant !== '') {
+            if (!function_exists('sc_history_append_message')
+                || sc_history_append_message($chat_id, 'assistant',
+                                             $assistant) < 1) {
+                return array('ok' => false,
+                             'error' => 'history_write_failed');
+            }
         }
         return array(
             'ok'        => true,
@@ -841,8 +850,11 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
         if (function_exists('sc_history_load_messages')) {
             $hist = sc_history_load_messages($chat_id);
         }
-        if (function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'user', $message);
+        if (!function_exists('sc_history_append_message')
+            || sc_history_append_message($chat_id, 'user', $message) < 1) {
+            echo "data: " . json_encode(
+                array('error' => 'history_write_failed')) . "\n\n";
+            exit;
         }
 
         $llm_msgs   = sc_api_chat_messages_to_llm($hist);
@@ -906,7 +918,12 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
         }
         if ($assistant !== ''
             && function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'assistant', $assistant);
+            if (sc_history_append_message($chat_id, 'assistant',
+                                          $assistant) < 1) {
+                echo "data: " . json_encode(
+                    array('error' => 'history_write_failed')) . "\n\n";
+                exit;
+            }
         }
 
         echo "data: " . json_encode(
@@ -1015,7 +1032,12 @@ if (!function_exists('sc_api_chat_handle_regenerate_stream')) {
         }
         if ($assistant !== ''
             && function_exists('sc_history_append_message')) {
-            sc_history_append_message($chat_id, 'assistant', $assistant);
+            if (sc_history_append_message($chat_id, 'assistant',
+                                          $assistant) < 1) {
+                echo "data: " . json_encode(
+                    array('error' => 'history_write_failed')) . "\n\n";
+                exit;
+            }
         }
 
         echo "data: " . json_encode(array('done' => true)) . "\n\n";
