@@ -200,19 +200,31 @@ $test = 'auth tokens expire on the server side';
 $ttl_cfg = $auth_cfg;
 $ttl_cfg['auth'] = array('cookie_expires' => '3600');
 $old_ts = time() - 7200;
-$old_sig = md5($old_ts . '|Admin|' . $auth_cfg['User Admin']['password']);
+$old_sig = sc_auth_sign($ttl_cfg, 'session', $old_ts . '|Admin');
 $old_token = 'scv3:' . $old_ts . ':Admin:' . $old_sig;
 $old_ctx = sc_auth_token_context($old_token, $ttl_cfg);
 sc_test_assert_true($test, empty($old_ctx['ok']),
                     'token older than configured cookie lifetime should fail');
-$fresh_ts = time();
-$fresh_sig = md5($fresh_ts . '|Admin|' . $auth_cfg['User Admin']['password']);
-$fresh_token = 'scv3:' . $fresh_ts . ':Admin:' . $fresh_sig;
+$fresh_token = sc_auth_generate_token($ttl_cfg, $admin_user);
 $fresh_ctx = sc_auth_token_context($fresh_token, $ttl_cfg);
 sc_test_assert_equal($test, 'Admin',
                      isset($fresh_ctx['username'])
                      ? $fresh_ctx['username'] : '',
                      'fresh token within configured lifetime should pass');
+
+$test = 'auth tokens are signed with an install secret, not the password';
+$forge_ts = time();
+$password_sig = md5($forge_ts . '|Admin|' . $auth_cfg['User Admin']['password']);
+$password_token = 'scv3:' . $forge_ts . ':Admin:' . $password_sig;
+$password_ctx = sc_auth_token_context($password_token, $auth_cfg);
+sc_test_assert_true($test, empty($password_ctx['ok']),
+                    'legacy password-derived md5 token should not verify');
+$real_token = sc_auth_generate_token($auth_cfg, $admin_user);
+$real_parts = explode(':', $real_token);
+sc_test_assert_true($test,
+                    count($real_parts) === 4
+                    && strlen($real_parts[3]) >= 64,
+                    'new token signature should use a stronger HMAC digest');
 
 $test = 'config editor CSRF helpers bind token to session and action';
 sc_test_assert_true($test, function_exists('sc_auth_csrf_token'),
@@ -398,7 +410,7 @@ $inactive_errors = sc_config_fatal_errors(
 sc_test_assert_equal($test, array(), $inactive_errors,
                      'inactive models should not block startup');
 
-$test = 'config validation rejects historical sample passwords';
+$test = 'config validation allows documented default passwords';
 $weak_password_cfg = array(
     'server' => array('port' => '9999'),
     'User Admin' => array(
@@ -408,7 +420,7 @@ $weak_password_cfg = array(
         'excluded_models' => '',
     ),
     'User Guest' => array(
-        'password' => 'guestpass',
+        'password' => '123456',
         'active' => 'true',
         'can_edit_config' => 'false',
         'excluded_models' => '',
@@ -417,8 +429,8 @@ $weak_password_cfg = array(
 $weak_errors = sc_config_fatal_errors(sc_validate_config($weak_password_cfg));
 sc_test_assert_true(
     $test,
-    in_array('auth_user_password_is_placeholder', $weak_errors, true),
-    'admin123/guestpass should be rejected as unsafe sample passwords'
+    !in_array('auth_user_password_is_placeholder', $weak_errors, true),
+    'admin123/123456 should be allowed as default account passwords'
 );
 
 $test = 'sc_validate_path_resolve preserves absolute base';
@@ -583,8 +595,8 @@ if (is_string($sample_ini)) {
     sc_test_assert_true(
         $test,
         strpos($sample_ini, '[User Admin]') !== false
-        && strpos($sample_ini, 'password = REPLACE_WITH_ADMIN_PASSWORD') !== false,
-        'sample config should include Admin user with placeholder password'
+        && strpos($sample_ini, 'password = admin123') !== false,
+        'sample config should include Admin user with default password'
     );
     sc_test_assert_true(
         $test,
@@ -597,9 +609,9 @@ if (is_string($sample_ini)) {
     sc_test_assert_true(
         $test,
         strpos($sample_ini, '[User Guest]') !== false
-        && strpos($sample_ini, 'password = REPLACE_WITH_GUEST_PASSWORD') !== false
+        && strpos($sample_ini, 'password = 123456') !== false
         && strpos($sample_ini, 'can_edit_config = false') !== false,
-        'sample Guest should exist with placeholder password and no edit right'
+        'sample Guest should exist with default password and no edit right'
     );
     sc_test_assert_true(
         $test,
@@ -1569,9 +1581,10 @@ if (is_string($app_js) && is_string($chat_js)
     );
     sc_test_assert_true(
         $test,
-        strpos($readme_text, 'admin123') === false
+        strpos($readme_text, 'admin123') !== false
+        && strpos($readme_text, '123456') !== false
         && strpos($readme_text, 'guestpass') === false,
-        'README.org should not publish reusable sample passwords'
+        'README.org should document the current default passwords only'
     );
 }
 

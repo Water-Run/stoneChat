@@ -602,6 +602,79 @@ if (!function_exists('sc_auth_token_max_age')) {
     }
 }
 
+if (!function_exists('sc_auth_install_secret_path')) {
+    function sc_auth_install_secret_path() {
+        $root = sc_auth_project_root();
+        $dir  = $root . DIRECTORY_SEPARATOR . 'HISTORY';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        return $dir . DIRECTORY_SEPARATOR . '.auth_secret';
+    }
+}
+
+if (!function_exists('sc_auth_fallback_secret')) {
+    function sc_auth_fallback_secret($cfg) {
+        $parts = array('stoneChat');
+        if (is_array($cfg)) {
+            if (isset($cfg['auth']['cookie_name'])) {
+                $parts[] = (string)$cfg['auth']['cookie_name'];
+            }
+            if (isset($cfg['server']['port'])) {
+                $parts[] = (string)$cfg['server']['port'];
+            }
+        }
+        $parts[] = sc_auth_project_root();
+        return sha1(implode('|', $parts));
+    }
+}
+
+if (!function_exists('sc_auth_install_secret')) {
+    function sc_auth_install_secret($cfg) {
+        if (is_array($cfg) && isset($cfg['auth'])
+            && is_array($cfg['auth'])
+            && isset($cfg['auth']['server_secret'])
+            && trim((string)$cfg['auth']['server_secret']) !== '') {
+            return trim((string)$cfg['auth']['server_secret']);
+        }
+        $path = sc_auth_install_secret_path();
+        if (is_file($path) && is_readable($path)) {
+            $raw = @file_get_contents($path);
+            if (is_string($raw) && trim($raw) !== '') {
+                return trim($raw);
+            }
+        }
+        $seed = microtime(true) . '|' . mt_rand() . '|' . uniqid('', true)
+              . '|' . sc_auth_project_root();
+        if (function_exists('php_uname')) {
+            $seed .= '|' . @php_uname();
+        }
+        $secret = sha1($seed) . sha1(strrev($seed));
+        if ($path !== '') {
+            @file_put_contents($path, $secret, LOCK_EX);
+        }
+        if (is_file($path) && is_readable($path)) {
+            $raw2 = @file_get_contents($path);
+            if (is_string($raw2) && trim($raw2) !== '') {
+                return trim($raw2);
+            }
+        }
+        return sc_auth_fallback_secret($cfg);
+    }
+}
+
+if (!function_exists('sc_auth_sign')) {
+    function sc_auth_sign($cfg, $purpose, $data) {
+        $key = sc_auth_install_secret($cfg);
+        $msg = (string)$purpose . '|' . (string)$data;
+        if (function_exists('hash_hmac')) {
+            return hash_hmac('sha256', $msg, $key);
+        }
+        return sha1($key . '|' . $msg . '|' . $key)
+             . sha1(strrev($key) . '|' . $msg);
+    }
+}
+
 /* sc_auth_csrf_token($session_token, $action)
  *   Stateless CSRF token tied to the current session token and action.
  *   One-hour ticks keep old form pages usable without making tokens
@@ -614,7 +687,8 @@ if (!function_exists('sc_auth_csrf_token')) {
             return '';
         }
         $tick = (int)floor(time() / 3600);
-        $sig = md5($tick . '|' . $act . '|' . $session);
+        $sig = sc_auth_sign(array(), 'csrf', $tick . '|' . $act
+                            . '|' . $session);
         return 'csrf1:' . $tick . ':' . $sig;
     }
 }
@@ -642,7 +716,8 @@ if (!function_exists('sc_auth_csrf_verify')) {
         if ($tick < ($now_tick - 1) || $tick > ($now_tick + 1)) {
             return false;
         }
-        $expected = md5($tick . '|' . $act . '|' . $session);
+        $expected = sc_auth_sign(array(), 'csrf', $tick . '|' . $act
+                                 . '|' . $session);
         return sc_auth_safe_eq($parts[2], $expected);
     }
 }
@@ -710,15 +785,8 @@ if (!function_exists('sc_auth_generate_token')) {
             $user = array();
         }
         $username = isset($user['username']) ? (string)$user['username'] : 'User';
-        $secret = isset($user['password']) ? (string)$user['password'] : '';
-        if ($secret === '') {
-            $row = sc_auth_find_user_by_name($username, $cfg);
-            if (is_array($row) && isset($row['password'])) {
-                $secret = (string)$row['password'];
-            }
-        }
         $ts = time();
-        $sig = md5($ts . '|' . $username . '|' . $secret);
+        $sig = sc_auth_sign($cfg, 'session', $ts . '|' . $username);
         return 'scv3:' . $ts . ':' . rawurlencode($username) . ':' . $sig;
     }
 }
@@ -739,11 +807,8 @@ if (!function_exists('sc_auth_token_context')) {
             $ts = $parts[1];
             $username = rawurldecode($parts[2]);
             $sig = $parts[3];
-            $secret = '';
             $u = sc_auth_find_user_by_name($username, $cfg);
-            if (is_array($u) && isset($u['password'])) {
-                $secret = (string)$u['password'];
-            } else {
+            if (!is_array($u)) {
                 return $bad;
             }
             if (empty($u['active'])) {
@@ -761,7 +826,8 @@ if (!function_exists('sc_auth_token_context')) {
             if ($max_age > 0 && ($now - $ts_i) > $max_age) {
                 return $bad;
             }
-            $expected = md5($ts . '|' . $username . '|' . $secret);
+            $expected = sc_auth_sign($cfg, 'session',
+                                     $ts . '|' . $username);
             if (!sc_auth_safe_eq($sig, $expected)) {
                 return $bad;
             }

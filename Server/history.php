@@ -527,7 +527,8 @@ if (!function_exists('sc_history_count_messages')) {
             return 0;
         }
         while (($name = @readdir($dh)) !== false) {
-            if (!empty(sc_history_parse_message_filename($name))) {
+            $parsed = sc_history_parse_message_filename($name);
+            if (!empty($parsed)) {
                 $count++;
             }
         }

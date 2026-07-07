@@ -59,7 +59,7 @@ Example administrator user:
 
 #+begin_src ini
 [User Admin]
-password = REPLACE_WITH_ADMIN_PASSWORD
+password = admin123
 active = true
 can_edit_config = true
 excluded_models =
@@ -71,7 +71,7 @@ Example guest user:
 
 #+begin_src ini
 [User Guest]
-password = REPLACE_WITH_GUEST_PASSWORD
+password = 123456
 active = true
 can_edit_config = false
 excluded_models =
@@ -79,8 +79,8 @@ default_lang = en
 send_shortcut = shift_enter
 #+end_src
 
-Replace the sample passwords before launching. The name after ~User~ is
-the display name shown on the page. It does
+Default login passwords are ~admin123~ for ~Admin~ and ~123456~ for
+~Guest~. The name after ~User~ is the display name shown on the page. It does
 not decide rights. Rights are read directly from that user's own
 configuration items:
 
