@@ -822,10 +822,22 @@ $test = 'chat send reports history write failures';
 if (function_exists('sc_history_set_user')
     && function_exists('sc_history_chat_dir')) {
     $history_user = 'WriteFailTest' . mt_rand(1000, 9999);
-    $chat_cfg = sc_load_config($root . '/CONF.ini');
-    if (!is_array($chat_cfg)) {
-        $chat_cfg = array();
-    }
+    
+    /* sc_api_chat_load_providers reads directly from CONF.ini. Since the repo
+     * template has placeholders, it gets rejected and provider resolution fails.
+     * We must temporarily write a valid CONF.ini so the test reaches the write phase. */
+    $real_ini = $root . '/CONF.ini';
+    $bak_ini  = $root . '/CONF.ini.bak';
+    if (is_file($real_ini)) { @rename($real_ini, $bak_ini); }
+    $mock_ini = "[server]\nport=80\n[User Admin]\npassword=foo\n"
+              . "[Model MockLocal]\nlabel=Mock Local\ntype=openai\n"
+              . "api_base=http://127.0.0.1:9999/mock\napi_key=mock\n"
+              . "model=mock-gpt\nstream=false\n";
+    @file_put_contents($real_ini, $mock_ini);
+
+    $chat_cfg = sc_load_config($real_ini);
+    if (!is_array($chat_cfg)) { $chat_cfg = array(); }
+
     sc_history_set_user($history_user);
 
     $chat_id = 'fulluser' . mt_rand(1000, 9999);
@@ -900,6 +912,10 @@ if (function_exists('sc_history_set_user')
                             . DIRECTORY_SEPARATOR . 'x');
     sc_history_set_user('');
     sc_test_rmdir_recursive($cleanup_root);
+
+    if (is_file($bak_ini)) {
+        @rename($bak_ini, $real_ini);
+    }
 }
 
 $test = 'manual title naming is a separate action';

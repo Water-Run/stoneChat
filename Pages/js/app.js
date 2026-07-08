@@ -139,7 +139,8 @@
     // -------------------------------------------------------------------------
     // Modal helpers. There is one mask and any number of dialogs; showing a
     // dialog reveals the mask and the panel, hiding clears both. Clicking
-    // the mask or any element with class "sc-modal-close" hides everything.
+    // the mask *itself* (not a child dialog element) or any element with
+    // class "sc-modal-close" hides everything.
     // -------------------------------------------------------------------------
     function showModal(dialogId) {
         var mask = $id('sc-modal-mask');
@@ -594,13 +595,18 @@
 
     // -------------------------------------------------------------------------
     // loadChat: switch the active conversation id in chat.js and clear the
-    // message pane so the UI reflects the click immediately. A future
-    // revision will replace the clear with a real load-from-server call;
-    // today this is enough because the operator's next user message
-    // re-anchors the visible history through the send loop.
+    // message pane so the UI reflects the click immediately.
+    // IMPORTANT: abort any in-flight stream before switching so old XHR
+    // chunks do not leak into the new chat's message pane (D17 fix).
     // -------------------------------------------------------------------------
     function loadChat(chatId) {
         if (!chatId) { return; }
+
+        // Stop any active stream before switching chats.
+        if (typeof SC.Chat !== 'undefined' && SC.Chat
+            && typeof SC.Chat.stop === 'function') {
+            try { SC.Chat.stop(); } catch (e) { /* ignore */ }
+        }
 
         // Highlight active chat in the sidebar.
         var list = $id('sc-history-list');
@@ -669,7 +675,13 @@
         bindEvent($id('sc-open-config-btn'),   'click', openConfigFile);
         bindEvent($id('sc-about-btn'),         'click', showAboutDialog);
         bindEvent($id('sc-logout-btn'),        'click', logout);
-        bindEvent($id('sc-modal-mask'),        'click', hideModal);
+        bindEvent($id('sc-modal-mask'), 'click', function (e) {
+            /* Only hide when the click lands on the mask itself, not on
+             * a child dialog element. IE6 uses srcElement; W3C uses target. */
+            var evt = e || window.event;
+            var tgt = evt ? (evt.target || evt.srcElement) : null;
+            if (tgt === $id('sc-modal-mask')) { hideModal(); }
+        });
         bindEvent($id('sc-history-search'),    'keyup', function () {
             var node = $id('sc-history-search');
             historySearchText = node ? String(node.value || '').toLowerCase() : '';

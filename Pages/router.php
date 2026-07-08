@@ -18,6 +18,12 @@
  *   /CONF.ini          -> 404 (config can contain secrets)
  *   anything else      -> return false (PHP server returns 404)
  *
+ * Public helpers (sc_-prefixed, function_exists guarded):
+ *   sc_router_not_found()               emit 404 header and response
+ *   sc_router_is_under($file, $base)    path traversal protection
+ *   sc_router_no_cache()                disable browser cache headers
+ *   sc_router_content_type($ext)        get content type for extension
+ *
  * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */
 
@@ -101,12 +107,25 @@ if ($sc_raw_path === '/favicon.ico') {
 /* ---- Modern-Windows "Super-Modern-HTML" interlude ----------------
  * When the host is Windows 10 1809 (build 17763) or newer AND the
  * request is for a real HTML page (not the super-modern.htm itself,
- * not an API/static asset), redirect the browser to the modern
- * splash page. The splash page sets a session cookie
- * (sc_super_modern_seen=1) before the 3-second countdown finishes
- * so subsequent page loads in the same browser session skip it. */
-$sc_is_modern = function_exists('sc_is_modern_windows')
-                ? sc_is_modern_windows() : false;
+ * not an API/static asset), AND the requesting browser is NOT a
+ * legacy Internet Explorer, redirect to the modern splash page.
+ *
+ * The client-browser guard is essential: sc_is_modern_windows() checks
+ * the *server* OS, not the *client* browser. A genuine XP/IE6 client
+ * reaching a Win10 host must NOT be redirected to super-modern.htm
+ * because that page uses HTML5 tags (<main>, media queries) that IE6
+ * cannot render.  Any UA containing "MSIE" or "Trident/" is IE and
+ * must be served the classic retro layout directly.
+ *
+ * The splash page sets sc_super_modern_seen=1 so subsequent page loads
+ * in the same browser session skip it. */
+$sc_ua = isset($_SERVER['HTTP_USER_AGENT'])
+         ? (string)$_SERVER['HTTP_USER_AGENT'] : '';
+$sc_client_is_ie = (strpos($sc_ua, 'MSIE') !== false
+                    || strpos($sc_ua, 'Trident/') !== false);
+$sc_is_modern = (!$sc_client_is_ie
+                 && function_exists('sc_is_modern_windows')
+                 && sc_is_modern_windows());
 $sc_already_seen    = !empty($_COOKIE['sc_super_modern_seen']);
 $sc_path_for_check  = isset($_SERVER['REQUEST_URI'])
                       ? (string)$_SERVER['REQUEST_URI'] : '';

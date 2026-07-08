@@ -48,6 +48,37 @@
  * The password (or any derivative) is never echoed in a response.
  * Provider secrets are never part of any response payload.
  *
+ * Public helpers (sc_api_chat_-prefixed, function_exists guarded):
+ *   sc_api_chat_emit($status, $payload)           emit JSON response
+ *   sc_api_chat_status_reason($status)            HTTP status reason phrase
+ *   sc_api_chat_load_cfg()                        load root CONF.ini
+ *   sc_api_chat_auth_context($cfg)                get user auth context
+ *   sc_api_chat_is_authorized($cfg)               check request cookie
+ *   sc_api_chat_read_body()                       read raw JSON body
+ *   sc_api_chat_str($src, $key, $default)         extract string value safely
+ *   sc_api_chat_action($body)                     extract request action
+ *   sc_api_chat_csrf_action($action)              CSRF action name map
+ *   sc_api_chat_require_csrf($cfg, $act, $body)   validate CSRF token
+ *   sc_api_chat_chat_id($body)                    validate & extract chat_id
+ *   sc_api_chat_ini_path()                        get absolute path to CONF.ini
+ *   sc_api_chat_load_providers($cfg)              load providers list
+ *   sc_api_chat_find_provider($provs, $id)        find provider by id
+ *   sc_api_chat_provider_timeout($provider)       get provider timeout
+ *   sc_api_chat_provider_stream($provider)        check if provider streams
+ *   sc_api_chat_resolve_provider(...)            resolve active provider row
+ *   sc_api_chat_load_system_prompt($id)           read system.txt file
+ *   sc_api_chat_messages_to_llm($messages)        map messages to LLM format
+ *   sc_api_chat_delete_last_assistant($id)        delete last assistant turn
+ *   sc_api_chat_check_timeout(...)                evaluate API call time limit
+ *   sc_api_chat_handle_send($cfg, $body)          execute "send" action (non-stream)
+ *   sc_api_chat_handle_name($cfg, $body)          execute "name" action (title)
+ *   sc_api_chat_handle_connect_check($cfg, $body) execute "connect_check" action
+ *   sc_api_chat_handle_regenerate($cfg, $body)    execute "regenerate" action
+ *   sc_api_chat_stream_result_error($result)      extract stream error code
+ *   sc_api_chat_stream_headers()                  set headers for EventSource
+ *   sc_api_chat_handle_send_stream($cfg, $body)   execute "send" action (streaming)
+ *   sc_api_chat_handle_regenerate_stream(...)    execute "regenerate" (streaming)
+ *
  * PHP 5.2 compatible (no closures, no [] array syntax, no
  * json_last_error, no http_response_code, function_exists guards
  * on every helper).
@@ -531,12 +562,13 @@ if (!function_exists('sc_api_chat_check_timeout')) {
  *   "send": persist a user turn, dispatch to LLM, persist the
  *   assistant turn.
  *
- *   Order of operations is deliberate:
- *     1. Save the user message FIRST so even a hard crash leaves a
- *        recoverable history (the user's words are not lost).
+ *   Order of operations:
+ *     1. Save the user message.
  *     2. Dispatch to sc_llm_chat().
- *     3. Save the assistant message. If the LLM call failed, the
- *        history still records the user turn intact. */
+ *     3a. On success: save the assistant message.
+ *     3b. On failure: roll back the user message file so the next
+ *         send attempt does not deliver two consecutive user turns
+ *         to the LLM (violates the alternating-role contract -- A3). */
 if (!function_exists('sc_api_chat_handle_send')) {
     function sc_api_chat_handle_send($cfg, $body) {
         $chat_id = sc_api_chat_chat_id($body);
@@ -577,10 +609,13 @@ if (!function_exists('sc_api_chat_handle_send')) {
         if (function_exists('sc_history_load_messages')) {
             $hist = sc_history_load_messages($chat_id);
         }
-        /* 1. persist the user message (defensive: even an LLM crash
-         *    afterwards leaves the user input on disk). */
-        if (!function_exists('sc_history_append_message')
-            || sc_history_append_message($chat_id, 'user', $message) < 1) {
+        /* 1. persist the user message. Record the index so we can
+         *    roll it back if the LLM call fails (A3 fix). */
+        if (!function_exists('sc_history_append_message')) {
+            return array('ok' => false, 'error' => 'history_write_failed');
+        }
+        $user_idx = sc_history_append_message($chat_id, 'user', $message);
+        if ($user_idx < 1) {
             return array('ok' => false, 'error' => 'history_write_failed');
         }
 
@@ -592,10 +627,11 @@ if (!function_exists('sc_api_chat_handle_send')) {
         $result    = sc_llm_chat($provider, $llm_msgs, $system);
         $elapsed   = (microtime(true) - $start) * 1000;
 
-        /* 3. save the assistant message (independent of outcome). */
+        /* 3. evaluate result. */
         $assistant = '';
         $chat_name = '';
         $ok_payload = false;
+        $err = 'unknown';
         if (is_array($result)) {
             $timeout_err = sc_api_chat_check_timeout(
                 $elapsed, $timeout, $result
@@ -614,16 +650,27 @@ if (!function_exists('sc_api_chat_handle_send')) {
         } else {
             $err = 'no_result';
         }
-        if ($ok_payload && $assistant !== ''
+
+        if (!$ok_payload) {
+            /* 3b. Roll back the orphan user message so the next send
+             *     does not produce two consecutive user turns. */
+            if (function_exists('sc_history_message_filename')) {
+                $rollback = sc_history_message_filename('user', $user_idx);
+                if ($rollback !== '') {
+                    @unlink($dir . DIRECTORY_SEPARATOR . $rollback);
+                }
+            }
+            return array('ok' => false, 'error' => $err);
+        }
+
+        /* 3a. Save the assistant message. */
+        if ($assistant !== ''
             && function_exists('sc_history_append_message')) {
             if (sc_history_append_message($chat_id, 'assistant',
                                           $assistant) < 1) {
                 return array('ok' => false,
                              'error' => 'history_write_failed');
             }
-        }
-        if (!$ok_payload) {
-            return array('ok' => false, 'error' => $err);
         }
 
         return array(
@@ -892,8 +939,13 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
         if (function_exists('sc_history_load_messages')) {
             $hist = sc_history_load_messages($chat_id);
         }
-        if (!function_exists('sc_history_append_message')
-            || sc_history_append_message($chat_id, 'user', $message) < 1) {
+        if (!function_exists('sc_history_append_message')) {
+            echo "data: " . json_encode(
+                array('error' => 'history_write_failed')) . "\n\n";
+            exit;
+        }
+        $user_idx = sc_history_append_message($chat_id, 'user', $message);
+        if ($user_idx < 1) {
             echo "data: " . json_encode(
                 array('error' => 'history_write_failed')) . "\n\n";
             exit;
@@ -954,6 +1006,16 @@ if (!function_exists('sc_api_chat_handle_send_stream')) {
         }
         $stream_err = sc_api_chat_stream_result_error($result);
         if ($stream_err !== '') {
+            /* Roll back the orphan user message (A3 fix). In streaming
+             * mode chunks may already have been flushed to the client
+             * so the response cannot be undone, but the history file
+             * must be cleaned up to preserve the alternating-role order. */
+            if (function_exists('sc_history_message_filename')) {
+                $rollback = sc_history_message_filename('user', $user_idx);
+                if ($rollback !== '') {
+                    @unlink($dir . DIRECTORY_SEPARATOR . $rollback);
+                }
+            }
             echo "data: " . json_encode(array('error' => $stream_err))
                . "\n\n";
             exit;

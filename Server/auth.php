@@ -15,20 +15,22 @@
  * single line to prevent log injection.
  *
  * Public helpers (sc_-prefixed, function_exists guarded):
- *   sc_auth_check_password($pw, $cfg)   verify password (constant-time)
- *   sc_auth_login_user($pw, $cfg)       resolve username by password
- *   sc_auth_token_context($token,$cfg)  verify token and return user context
- *   sc_auth_provider_allowed(...)       provider access by user entry
- *   sc_auth_is_locked($ip, $cfg)        is the IP currently locked out?
- *   sc_auth_record_failure($ip, $cfg)   increment the IP's failure count
- *   sc_auth_record_success($ip)         clear the IP's failure count
- *   sc_auth_log_attempt($ip, $ok, $cfg) append a single audit line
- *   sc_auth_login($password, $cfg)      main entry
- *   sc_auth_log_login($cfg, $r, $ip)    log wrapper (textual result)
- *   sc_auth_reset_lock($cfg)            reset all lockouts
- *   sc_auth_clear_failures($cfg)        alias of reset_lock
- *   sc_auth_generate_token($cfg,$user) signed session token
- *   sc_auth_verify_token($token, $cfg)  verify a stateless token
+ *   sc_auth_provider_allowed(...)            provider access by user entry
+ *   sc_auth_check_password($pw, $cfg)        verify password (constant-time)
+ *   sc_auth_is_locked($ip, $cfg)             is the IP currently locked out?
+ *   sc_auth_record_failure($ip, $cfg)        increment the IP's failure count
+ *   sc_auth_record_success($ip)              clear the IP's failure count
+ *   sc_auth_log_attempt($ip, $ok, $cfg)      append a single audit line
+ *   sc_auth_login($password, $cfg)           main entry
+ *   sc_auth_log_login($cfg, $r, $ip)         log wrapper (textual result)
+ *   sc_auth_reset_lock($cfg)                 reset all lockouts
+ *   sc_auth_clear_failures($cfg)             alias of reset_lock
+ *   sc_auth_csrf_token($session, $action)    generate a CSRF token
+ *   sc_auth_csrf_verify($session, $act, $tok) verify a CSRF token
+ *   sc_auth_csrf_tokens($session, $actions)  map of action -> CSRF token
+ *   sc_auth_generate_token($cfg,$user)       signed session token
+ *   sc_auth_token_context($token,$cfg)       verify token and return user context
+ *   sc_auth_verify_token($token, $cfg)       verify a stateless token
  *
  * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */

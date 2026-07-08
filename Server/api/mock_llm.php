@@ -11,6 +11,8 @@
  *   - Origin matches http://localhost:<port> or
  *     http://127.0.0.1:<port>: allowed.
  *   - Any other Origin: respond 403 and refuse to serve.
+ *
+ * PHP 5.2 compatible.
  * ------------------------------------------------------------------------- */
 
 require_once dirname(__FILE__) . '/../boot_check.php';
