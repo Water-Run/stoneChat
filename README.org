@@ -9,8 +9,10 @@ stoneChat is a small LLM web chat for Windows XP-era machines and IE6.
 
 * Requirements
 
-PHP 5.4 or newer is required. The launcher uses PHP's built-in web
-server:
+stoneChat runs on Windows only. It is built for old Windows machines
+(Windows XP + Internet Explorer 6) and relies on Windows-specific
+helpers such as stunnel and WScript.Shell. PHP 5.4 or newer is
+required. The launcher uses PHP's built-in web server:
 
 #+begin_src bat
 php -S
@@ -171,14 +173,6 @@ After startup, open:
 #+begin_src text
 http://localhost:9999
 #+end_src
-
-* Notes For Old Machines
-
-- The main chat page is written for IE6-era JavaScript and CSS.
-- The compatibility banner is written to render in IE11 and closes
-  itself after three seconds.
-- Markdown rendering is intentionally small and local; no browser
-  package manager is required.
 
 * License
 
