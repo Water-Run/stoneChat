@@ -36,11 +36,29 @@ assert(launcherText.includes('127.0.0.1:9998'));
 assert(launcherText.includes('Pages\\router.php'));
 assert(launcherText.includes('Server\\api\\mock_llm.php'));
 assert(launcherText.includes('pushd'));
+const missingProbeContracts = [];
+if (!launcherText.includes('http://127.0.0.1:9999/Pages/index.htm')) {
+  missingProbeContracts.push('main probe must use /Pages/index.htm');
+}
+if (!launcherText.includes('http://127.0.0.1:9998/Server/api/mock_llm.php')) {
+  missingProbeContracts.push('mock endpoint must be probed before success');
+}
+if (!launcherText.includes('"POST" "mock"')) {
+  missingProbeContracts.push('mock probe must send its POST readiness input');
+}
+assert.deepStrictEqual(missingProbeContracts, []);
+assert(!launcherText.includes('http://127.0.0.1:9999/"'));
 
 assert(probeText.includes('file_get_contents'));
 assert(probeText.includes("'timeout' => 5"));
 assert(probeText.includes("'/^HTTP\\/1\\.[01] 200/'"));
 assert(probeText.includes('exit(1)'));
+assert(probeText.includes("$method = $argc > 2 ? strtoupper($argv[2]) : 'GET';"));
+assert(probeText.includes("$expect_mock = $argc > 3 && $argv[3] === 'mock';"));
+assert(probeText.includes("'method' => $method"));
+assert(probeText.includes('Content-Type: application/json'));
+assert(probeText.includes("'model' => 'MockLocal'"));
+assert(probeText.includes("['choices'][0]['message']['content']"));
 
 assert(vmxText.includes(
   'sharedFolder1.hostPath = "/home/waterrun/Project/stoneChat/tools/xp"'

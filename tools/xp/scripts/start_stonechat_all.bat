@@ -39,7 +39,7 @@ start "stoneChat mock" /MIN cmd /c "pushd ""%APP_ROOT%"" && ""%PHP_BIN%"" -S 127
 if errorlevel 1 goto start_failed
 
 for /l %%i in (1,1,5) do (
-    "%PHP_BIN%" "%PROBE%" "http://127.0.0.1:9999/" >nul 2>&1 && goto probe_ok
+    "%PHP_BIN%" "%PROBE%" "http://127.0.0.1:9999/Pages/index.htm" >nul 2>&1 && "%PHP_BIN%" "%PROBE%" "http://127.0.0.1:9998/Server/api/mock_llm.php" "POST" "mock" >nul 2>&1 && goto probe_ok
     ping -n 2 127.0.0.1 >nul
 )
 
