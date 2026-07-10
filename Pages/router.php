@@ -187,14 +187,7 @@ if (strpos($path, '/Pages/') === 0) {
             require $file;
             return true;
         }
-        $ctype = sc_router_content_type($ext);
-        if ($ctype !== '') {
-            header('Content-Type: ' . $ctype);
-            sc_router_no_cache();
-            readfile($file);
-            return true;
-        }
-        return false; /* let PHP serve as static. */
+        return false; /* PHP's static server serves validated Pages assets. */
     }
     return sc_router_not_found();
 }
