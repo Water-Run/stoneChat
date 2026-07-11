@@ -1,6 +1,9 @@
 #+TITLE: stoneChat
 #+AUTHOR: WaterRun
 
+[[file:SAMPLE.bmp]]
+
+
 stoneChat is a small LLM web chat for Windows XP-era machines and IE6.
 
 #+begin_quote
