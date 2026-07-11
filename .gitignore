@@ -13,6 +13,7 @@ desktop.ini
 *.bak
 *.tmp
 *~
+.worktrees/
 
 # ModernNetwork runtime artifacts
 ModernNetwork/stunnel.conf
