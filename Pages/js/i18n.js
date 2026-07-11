@@ -2,17 +2,22 @@
  * stoneChat / Pages/js/i18n.js
  *
  * Client-side internationalization. IE6-compatible (ES3 only):
- * var/function, no JSON, no Array methods. Language is selected by
- * URL query string; no localStorage and no language cookie.
+ * var/function, no JSON, no Array methods.
+ *
+ * Language selection order:
+ *   1) ?lang= query (if valid)
+ *   2) sc_lang cookie (survives page navigation)
+ *   3) defaultLang from config
  *
  * Public API (window.SC.I18n, alias window.scI18n):
- *   init(supportedLangs, defaultLang)   bootstrap, reads ?lang=
+ *   init(supportedLangs, defaultLang)   bootstrap
  *   load(lang)                          returns translation table
- *   apply()                             walks DOM, replaces text
- *   setLang(lang)                       rewrites ?lang= and reloads page
+ *   apply()                             walks DOM, replaces text / titles
+ *   setLang(lang)                       cookie + ?lang= + reload
  *   getLang()                           current language code
+ *   withLang(url)                       append/replace ?lang= on a URL
  *   t(key)                              lookup with English fallback
- *   getLangSwitcherHTML()               8 language buttons
+ *   getLangSwitcherHTML()               language buttons
  * ------------------------------------------------------------------------- */
 (function () {
   var SC = window.SC || {};
@@ -90,11 +95,18 @@
     'sidebar.noMatch': 'No match.',
     'common.close': 'Close',
     'common.back': 'Back to chat',
+    'common.yes': 'Yes',
+    'common.no': 'No',
+    'app.tagline': 'a caveman peeking at modern technology',
     'about.modernWindows': 'Modern Windows',
     'about.modernBrowser': 'Modern Browser',
     'about.timezone': 'Time Zone',
     'about.runtime': 'Runtime',
+    'about.php': 'PHP',
+    'about.os': 'OS',
     'about.author': 'Author',
+    'about.github': 'GitHub',
+    'chat.nonStream': 'non-stream',
     'error.network': 'Network error',
     'error.timeout': 'Request timeout',
     'error.unauthorized': 'Unauthorized',
@@ -163,6 +175,20 @@
         "sidebar.noHistory": "没有历史记录。",
         "sidebar.noMatch": "没有符合项。",
         "common.close": "关闭",
+        "common.back": "返回聊天",
+        "common.yes": "是",
+        "common.no": "否",
+        "app.tagline": "a caveman peeking at modern technology",
+        "chat.pickModel": "选择一个模型以开始对话。",
+        "chat.nonStream": "非流式",
+        "about.modernWindows": "现代 Windows",
+        "about.modernBrowser": "现代浏览器",
+        "about.timezone": "时区",
+        "about.runtime": "运行时",
+        "about.php": "PHP",
+        "about.os": "操作系统",
+        "about.author": "作者",
+        "about.github": "GitHub",
         "error.network": "网络错误",
         "error.timeout": "请求超时",
         "error.unauthorized": "未授权",
@@ -735,11 +761,54 @@
     return tableCache[lang];
   }
 
+  var LANG_COOKIE = 'sc_lang';
+
+  function readCookie(name) {
+    if (typeof document === 'undefined' || !document.cookie) return null;
+    var parts = String(document.cookie).split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      while (p.charAt(0) === ' ') { p = p.substring(1); }
+      if (p.indexOf(name + '=') === 0) {
+        return safeDecode(p.substring(name.length + 1));
+      }
+    }
+    return null;
+  }
+
+  function writeCookie(name, value) {
+    if (typeof document === 'undefined') return;
+    /* 1 year; path=/ so every page under the host keeps the choice. */
+    var exp = new Date();
+    exp.setTime(exp.getTime() + 365 * 24 * 60 * 60 * 1000);
+    document.cookie = name + '=' + encodeURIComponent(value)
+      + '; expires=' + exp.toUTCString()
+      + '; path=/';
+  }
+
+  function isSupported(lang, supported) {
+    if (!lang) return false;
+    for (var i = 0; i < supported.length; i++) {
+      if (supported[i] === lang) return true;
+    }
+    return false;
+  }
+
   /* ----- Public: init(supportedLangs, defaultLang) ----- */
   function init(supported, def) {
     supportedLangs = (supported && supported.length) ? supported : ['en'];
     defaultLang = def || 'en';
-    currentLang = pickFromQuery(supportedLangs) || defaultLang;
+    var fromQuery = pickFromQuery(supportedLangs);
+    var fromCookie = readCookie(LANG_COOKIE);
+    if (fromCookie && !isSupported(fromCookie, supportedLangs)) {
+      fromCookie = null;
+    }
+    currentLang = fromQuery || fromCookie || defaultLang;
+    if (!isSupported(currentLang, supportedLangs)) {
+      currentLang = defaultLang;
+    }
+    /* Persist so about.htm / newchat.htm keep the language without ?lang=. */
+    writeCookie(LANG_COOKIE, currentLang);
     table = load(currentLang);
   }
 
@@ -750,22 +819,85 @@
     return key;
   }
 
-  /* ----- Public: setLang(lang) - rewrites ?lang= and reloads page ----- */
+  /* ----- Public: withLang(url) - keep lang on relative navigations ----- */
+  function withLang(url) {
+    var u = (url === null || url === undefined) ? '' : String(url);
+    if (u === '' || u.indexOf('javascript:') === 0 || u.charAt(0) === '#') {
+      return u;
+    }
+    /* Absolute external URLs: leave alone. */
+    if (u.indexOf('://') >= 0) { return u; }
+    var hash = '';
+    var hashPos = u.indexOf('#');
+    if (hashPos >= 0) {
+      hash = u.substring(hashPos);
+      u = u.substring(0, hashPos);
+    }
+    var qPos = u.indexOf('?');
+    var path = qPos >= 0 ? u.substring(0, qPos) : u;
+    var q = qPos >= 0 ? u.substring(qPos + 1) : '';
+    var pairs = q ? q.split('&') : [];
+    var out = [];
+    var i;
+    for (i = 0; i < pairs.length; i++) {
+      if (pairs[i] === '') continue;
+      if (pairs[i].indexOf('lang=') === 0) continue;
+      out.push(pairs[i]);
+    }
+    out.push('lang=' + encodeURIComponent(currentLang || 'en'));
+    return path + '?' + out.join('&') + hash;
+  }
+
+  /* ----- Public: setLang(lang) - cookie + ?lang= + reload same page ----- */
   function setLang(lang) {
+    if (!isSupported(lang, supportedLangs)) {
+      lang = defaultLang;
+    }
+    writeCookie(LANG_COOKIE, lang);
     var base = 'chat.htm';
+    var searchExtra = '';
     if (typeof location !== 'undefined' && location.pathname) {
       var path = location.pathname;
       var slash = path.lastIndexOf('/');
       base = slash >= 0 ? path.substring(slash + 1) : path;
       if (base === '') { base = 'chat.htm'; }
+      /* Keep non-lang query params (e.g. chat.htm?id=...). */
+      var cur = location.search || '';
+      if (cur.charAt(0) === '?') cur = cur.substring(1);
+      if (cur) {
+        var parts = cur.split('&');
+        var keep = [];
+        for (var j = 0; j < parts.length; j++) {
+          if (parts[j] && parts[j].indexOf('lang=') !== 0) {
+            keep.push(parts[j]);
+          }
+        }
+        if (keep.length) searchExtra = keep.join('&') + '&';
+      }
     }
     if (typeof location !== 'undefined') {
-      location.href = base + '?lang=' + encodeURIComponent(lang);
+      location.href = base + '?' + searchExtra + 'lang=' + encodeURIComponent(lang);
     }
   }
 
   /* ----- Public: getLang() ----- */
   function getLang() { return currentLang; }
+
+  /* Stamp relative page links so navigation keeps ?lang= even without cookie. */
+  function stampLangLinks() {
+    if (typeof document === 'undefined' || !document.getElementsByTagName) return;
+    var anchors = document.getElementsByTagName('a');
+    for (var i = 0; i < anchors.length; i++) {
+      var a = anchors[i];
+      var href = a.getAttribute ? a.getAttribute('href') : '';
+      if (!href) continue;
+      if (href.indexOf('javascript:') === 0) continue;
+      if (href.indexOf('://') >= 0) continue;
+      /* Only stoneChat pages. */
+      if (href.indexOf('.htm') < 0 && href.indexOf('.php') < 0) continue;
+      a.setAttribute('href', withLang(href));
+    }
+  }
 
   /* ----- Helper: set text in IE6-friendly way (innerText fallback) ----- */
   function setNodeText(node, text) {
@@ -776,15 +908,25 @@
     }
   }
 
-  /* ----- Public: apply() - walk DOM, replace text of [data-i18n=key] elements ----- */
+  /* ----- Public: apply() - walk DOM, replace text / title / value ----- */
   function apply() {
     if (typeof document === 'undefined' || !document.getElementsByTagName) return;
     var nodes = document.getElementsByTagName('*');
     for (var i = 0; i < nodes.length; i++) {
       var node = nodes[i];
-      var key = node.getAttribute ? node.getAttribute('data-i18n') : null;
+      if (!node.getAttribute) continue;
+      var key = node.getAttribute('data-i18n');
       if (key) setNodeText(node, t(key));
+      var titleKey = node.getAttribute('data-i18n-title');
+      if (titleKey) {
+        try { node.setAttribute('title', t(titleKey)); } catch (e1) { /* ignore */ }
+      }
+      var valueKey = node.getAttribute('data-i18n-value');
+      if (valueKey && typeof node.value === 'string') {
+        try { node.value = t(valueKey); } catch (e2) { /* ignore */ }
+      }
     }
+    stampLangLinks();
   }
 
   /* ----- Public: getLangSwitcherHTML() - 8 language buttons ----- */
@@ -808,6 +950,7 @@
     apply: apply,
     setLang: setLang,
     getLang: getLang,
+    withLang: withLang,
     t: t,
     getLangSwitcherHTML: getLangSwitcherHTML
   };

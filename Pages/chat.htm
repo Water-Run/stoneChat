@@ -4,19 +4,18 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat</title>
-<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711b" />
-<script type="text/javascript" src="js/i18n.js?v=20260711b"></script>
-<script type="text/javascript" src="js/api.js?v=20260711b"></script>
-<script type="text/javascript" src="js/chat.js?v=20260711b"></script>
-<script type="text/javascript" src="js/app.js?v=20260711b"></script>
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711f" />
+<script type="text/javascript" src="js/i18n.js?v=20260711d"></script>
+<script type="text/javascript" src="js/api.js?v=20260711d"></script>
+<script type="text/javascript" src="js/chat.js?v=20260711d"></script>
+<script type="text/javascript" src="js/app.js?v=20260711f"></script>
 </head>
 <body>
 <div class="app-shell">
-  <!-- Header: brand logo -> About page; language switcher on the right. -->
   <div class="header">
     <div class="header-logo" id="sc-logo">
       <a href="about.htm" class="header-home-link" title="About">
-        <img src="../Assets/logo_icon.png" alt="stoneChat" width="36" height="36" />
+        <img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />
         <span data-i18n="app.title">stoneChat</span>
       </a>
     </div>
@@ -24,15 +23,11 @@
     <div class="clear"></div>
   </div>
 
-  <!-- Two-column chat layout: sidebar (left) + main content (right). -->
   <div class="chat-layout">
     <div class="sidebar">
-      <!-- IE6: float:right control MUST come before the title text node. -->
+      <!-- IE6: float:right control before title so they stay one row. -->
       <div class="sidebar-header">
-        <a class="btn new-chat" id="sc-new-chat-btn" href="newchat.htm" title="New chat">
-          <img class="btn-icon" src="../Assets/icons/new.png" width="16" height="16" alt="" />
-          <span data-i18n="chat.newChat">New chat</span>
-        </a>
+        <a class="btn new-chat" id="sc-new-chat-btn" href="newchat.htm" data-i18n="chat.newChat">[New chat]</a>
         <span class="sidebar-title" data-i18n="sidebar.history">History</span>
       </div>
       <ul class="history-list" id="sc-history-list"></ul>
@@ -40,10 +35,7 @@
         <input type="text" class="history-search" id="sc-history-search" value="" data-i18n-title="sidebar.search" />
         <a class="btn" id="sc-open-config-btn" href="javascript:void(0)" style="display:none" data-i18n="chat.editConfig">[Edit config]</a>
         <a class="btn" id="sc-reload-config-btn" href="javascript:void(0)" data-i18n="chat.reloadConfig">[Reload config]</a>
-        <a class="btn" id="sc-about-btn" href="about.htm">
-          <img class="btn-icon" src="../Assets/icons/about.png" width="16" height="16" alt="" />
-          <span data-i18n="chat.about">About</span>
-        </a>
+        <a class="btn" id="sc-about-btn" href="about.htm" data-i18n="chat.about">[About]</a>
         <a class="btn" id="sc-logout-btn" href="javascript:void(0)" data-i18n="chat.logout">[Logout]</a>
       </div>
     </div>
@@ -54,7 +46,6 @@
       <div class="chat-messages" id="chat-messages"></div>
       <div class="input-area">
         <textarea id="chat-input" name="msg-input" class="msg-input" rows="3" cols="60"></textarea>
-        <!-- Two rows: meta line + action buttons (IE6-safe, no one-line squeeze). -->
         <div class="input-toolbar">
           <div class="input-toolbar-meta">
             <span class="char-count" id="char-count">...</span>
@@ -62,19 +53,10 @@
             <span class="send-hint" id="send-hint">...</span>
           </div>
           <div class="input-toolbar-actions">
-            <a class="btn send-button" id="send-button" href="javascript:void(0)">
-              <img class="btn-icon" src="../Assets/icons/send.png" width="16" height="16" alt="" />
-              <span data-i18n="chat.send">Send</span>
-            </a>
-            <a class="btn stop-button" id="stop-button" href="javascript:void(0)">
-              <img class="btn-icon" src="../Assets/icons/stop.png" width="16" height="16" alt="" />
-              <span data-i18n="chat.stop">Stop</span>
-            </a>
-            <a class="btn name-button" id="name-button" href="javascript:void(0)" data-i18n="chat.generateTitle">Title</a>
-            <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)">
-              <img class="btn-icon" src="../Assets/icons/regenerate.png" width="16" height="16" alt="" />
-              <span data-i18n="chat.regenerate">Regenerate</span>
-            </a>
+            <a class="btn send-button" id="send-button" href="javascript:void(0)" data-i18n="chat.send">[Send]</a>
+            <a class="btn stop-button" id="stop-button" href="javascript:void(0)" data-i18n="chat.stop">[Stop]</a>
+            <a class="btn name-button" id="name-button" href="javascript:void(0)" data-i18n="chat.generateTitle">[Title]</a>
+            <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)" data-i18n="chat.regenerate">[Regenerate]</a>
           </div>
         </div>
       </div>
@@ -84,9 +66,6 @@
 
 <script type="text/javascript">
 //<![CDATA[
-/* -------------------------------------------------------------------------
- * stoneChat / Pages/chat.htm page-load bootstrap (IE6 / Win-XP).
- * ------------------------------------------------------------------------- */
 window.onload = function () {
   var SC = (typeof window.SC !== 'undefined' && window.SC) ? window.SC : null;
   var i18n = (SC && SC.I18n) ? SC.I18n
@@ -117,7 +96,6 @@ window.onload = function () {
       try { i18n.apply(); } catch (e) { /* ignore */ }
     }
   }
-
   if (SC && SC.App && typeof SC.App.bootstrap === 'function') {
     try { SC.App.bootstrap(); } catch (e) { /* swallow */ }
   }

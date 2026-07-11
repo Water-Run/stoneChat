@@ -4,17 +4,17 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat - New chat</title>
-<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711b" />
-<script type="text/javascript" src="js/i18n.js?v=20260711b"></script>
-<script type="text/javascript" src="js/api.js?v=20260711b"></script>
-<script type="text/javascript" src="js/app.js?v=20260711b"></script>
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711e" />
+<script type="text/javascript" src="js/i18n.js?v=20260711d"></script>
+<script type="text/javascript" src="js/api.js?v=20260711d"></script>
+<script type="text/javascript" src="js/app.js?v=20260711d"></script>
 </head>
 <body>
 <div class="app-shell">
   <div class="header">
     <div class="header-logo">
       <a href="chat.htm" class="header-home-link">
-        <img src="../Assets/logo_icon.png" alt="stoneChat" width="36" height="36" />
+        <img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />
         <span data-i18n="app.title">stoneChat</span>
       </a>
     </div>
@@ -22,20 +22,16 @@
     <div class="clear"></div>
   </div>
 
-  <div class="subpage-panel">
-    <div class="subpage-title">
-      <img src="../Assets/icons/new.png" width="16" height="16" alt="" />
+  <!-- Layout matches the 2026-06 chat.htm New-chat modal. -->
+  <div class="page-dialog">
+    <div class="modal-title">
       <span data-i18n="chat.newChat">New chat</span>
     </div>
-    <div class="subpage-body">
-      <p class="muted" data-i18n="chat.pickModel">Pick a model to start a conversation.</p>
+    <div class="modal-body">
       <ul class="newchat-list" id="sc-newchat-list"></ul>
     </div>
-    <div class="subpage-footer">
-      <a class="btn" href="chat.htm">
-        <img class="btn-icon" src="../Assets/icons/back.png" width="16" height="16" alt="" />
-        <span data-i18n="common.back">Back to chat</span>
-      </a>
+    <div class="modal-footer">
+      <a class="btn" href="chat.htm" data-i18n="common.close">[Close]</a>
     </div>
   </div>
 </div>
@@ -49,11 +45,11 @@ window.onload = function () {
     try {
       var cfg = api.getConfig();
       if (cfg && cfg.ok && cfg.data && i18n && i18n.init) {
-        var langs = cfg.data.langs || ['en'];
-        var def = cfg.data.default_lang || 'en';
-        i18n.init(langs, def);
+        i18n.init(cfg.data.langs || ['en'], cfg.data.default_lang || 'en');
       }
     } catch (e) { /* ignore */ }
+  } else if (i18n && i18n.init) {
+    try { i18n.init(['en'], 'en'); } catch (e0) { /* ignore */ }
   }
   if (i18n && i18n.apply) { try { i18n.apply(); } catch (e2) { /* ignore */ } }
   if (SC && SC.App && typeof SC.App.bootstrapNewChatPage === 'function') {

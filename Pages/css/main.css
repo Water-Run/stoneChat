@@ -88,25 +88,44 @@ li {
 }
 
 /* -------------------------------------------------------------------------
- * Wrapper - fixed 760px, centered (text-align + margin:auto)
+ * Wrapper — liquid column (2001 style)
+ *   Prefer ~92% of the viewport, floor ~760, ceiling ~1400.
+ *   IE6 uses expression; others use % + max/min-width.
  * ------------------------------------------------------------------------- */
 .wrap {
-  width: 760px;
+  width: 92%;
+  max-width: 1400px;
+  min-width: 760px;
   margin: 0 auto;
   padding: 8px;
   text-align: left;
+}
+* html .wrap {
+  width: expression(
+    (function () {
+      var w = document.documentElement.clientWidth
+            ? document.documentElement.clientWidth
+            : document.body.clientWidth;
+      var t = Math.floor(w * 0.92);
+      if (t < 760) { t = (w < 780) ? (w - 16) : 760; }
+      if (t > 1400) { t = 1400; }
+      if (t > w - 16) { t = w - 16; }
+      return t + 'px';
+    })()
+  );
 }
 
 /* -------------------------------------------------------------------------
  * Header bar (logo + lang switcher + title)
  * ------------------------------------------------------------------------- */
 .header {
-  width: 734px;
+  width: auto;
   background: #ffffff;
   border: 1px solid #888;
   padding: 10px 12px;
   margin: 0 0 8px 0;
   overflow: hidden;
+  zoom: 1;
 }
 
 .header-logo {
@@ -148,12 +167,14 @@ li {
 }
 
 /* -------------------------------------------------------------------------
- * Two-column layout for chat page
- * Sidebar floats left (180px), main-content floats right (~570px).
+ * Two-column chat layout (liquid main pane)
+ *   Sidebar fixed ~180px; main fills the rest via margin-left
+ *   (classic liquid layout — no float:right fixed width).
  * ------------------------------------------------------------------------- */
 .chat-layout {
-  width: 760px;
+  width: 100%;
   overflow: hidden;
+  zoom: 1;
 }
 
 .sidebar {
@@ -161,16 +182,17 @@ li {
   width: 180px;
   background: #ffffff;
   border: 1px solid #888;
-  margin: 0 6px 0 0;
+  margin: 0 8px 0 0;
   padding: 4px;
 }
 
 .main-content {
-  float: right;
-  width: 554px;
+  /* fill remaining width of .app-shell / .chat-layout */
+  margin-left: 196px;
   background: #ffffff;
   border: 1px solid #888;
   padding: 4px;
+  zoom: 1;
 }
 
 /* -------------------------------------------------------------------------
@@ -209,7 +231,7 @@ li {
 
 .top-menu .model-name {
   float: left;
-  width: 270px;
+  width: 45%;
   padding: 1px 4px;
   border: 1px solid #888;
   background: #ffffff;
@@ -306,13 +328,7 @@ li {
   vertical-align: middle;
   line-height: 16px;
 }
-.btn-icon {
-  width: 16px;
-  height: 16px;
-  vertical-align: middle;
-  margin-right: 3px;
-  border: 0;
-}
+
 .btn:active {
   border-top: 1px solid #444444;
   border-left: 1px solid #444444;
@@ -333,10 +349,25 @@ li {
   border: 1px solid #888;
   background: #ffffff;
   padding: 6px;
-  height: 200px;
+  /* Base height; large viewports grow via expression below */
+  height: 280px;
   overflow: auto;
   margin: 0 0 4px 0;
   font-size: 12px;
+}
+/* IE6: grow message pane with window height (floor 200, cap 560) */
+* html .chat-messages {
+  height: expression(
+    (function () {
+      var h = document.documentElement.clientHeight
+            ? document.documentElement.clientHeight
+            : document.body.clientHeight;
+      var t = Math.floor(h * 0.42);
+      if (t < 200) { t = 200; }
+      if (t > 560) { t = 560; }
+      return t + 'px';
+    })()
+  );
 }
 
 .chat-messages .msg {
@@ -481,8 +512,8 @@ li {
 }
 
 .input-area textarea {
-  width: 540px;
-  height: 42px;
+  width: 98%;
+  height: 48px;
   padding: 3px;
   border-top: 1px solid #444444;
   border-left: 1px solid #444444;
@@ -492,7 +523,7 @@ li {
   font-family: Tahoma, Verdana, sans-serif;
   font-size: 12px;
   color: #333;
-  margin: 0 4px 0 0;
+  margin: 0 0 0 0;
   vertical-align: top;
 }
 
@@ -512,16 +543,32 @@ li {
   margin: 0;
   padding: 0;
   font-size: 11px;
-  height: 185px;
+  height: 260px;
   overflow: auto;
 }
+/* IE6: history list tracks window height with the message pane */
+* html .history-list {
+  height: expression(
+    (function () {
+      var h = document.documentElement.clientHeight
+            ? document.documentElement.clientHeight
+            : document.body.clientHeight;
+      var t = Math.floor(h * 0.38);
+      if (t < 160) { t = 160; }
+      if (t > 480) { t = 480; }
+      return t + 'px';
+    })()
+  );
+}
 
-.history-list li {
+.history-list li,
+.history-list li.history-item {
   margin: 0 0 2px 0;
   padding: 2px 4px;
   border: 1px solid #888;
   background: #f4f1ea;
   overflow: hidden;
+  zoom: 1; /* IE6 hasLayout so floats stay inside the row */
   cursor: pointer;
 }
 
@@ -531,24 +578,59 @@ li {
   border: 1px solid #003366;
 }
 
-.history-list li.history-active a {
+/* Main open-chat link: block, leaves room for [r][x] on the right */
+.history-list a.history-main {
+  display: block;
+  margin-right: 34px;
+  color: #003366;
+  text-decoration: none;
+  overflow: hidden;
+  zoom: 1;
+}
+.history-list a.history-main:hover {
+  text-decoration: underline;
+  color: #990000;
+}
+.history-list li.history-active a.history-main {
   color: #ffffff;
 }
 
-.history-list a {
-  display: block;
-  color: #003366;
-  text-decoration: none;
+/* Action pair: one horizontal strip, top-aligned with the title */
+.history-list .history-actions {
+  float: right;
+  width: 30px;
+  margin: 0 0 0 2px;
+  padding: 0;
+  text-align: right;
+  white-space: nowrap;
+  line-height: 14px;
 }
-.history-list a:hover {
+.history-list .history-actions a,
+.history-list .history-delete,
+.history-list .history-rename {
+  display: inline;
+  float: none;
+  font-size: 10px;
+  line-height: 14px;
   text-decoration: underline;
-  color: #990000;
+  margin: 0 0 0 2px;
+  padding: 0;
+  color: #8b1a1a;
+}
+.history-list .history-rename {
+  color: #003366;
+}
+.history-list li.history-active .history-actions a,
+.history-list li.history-active .history-delete,
+.history-list li.history-active .history-rename {
+  color: #ffffff;
 }
 
 .history-list .history-title {
   display: block;
   font-weight: bold;
   color: #333;
+  line-height: 14px;
 }
 
 .history-list li.history-active .history-title {
@@ -559,23 +641,11 @@ li {
   display: block;
   font-size: 10px;
   color: #666;
+  line-height: 13px;
 }
 
 .history-list li.history-active .history-meta {
   color: #d4d0c8;
-}
-
-.history-list .history-delete,
-.history-list .history-rename {
-  float: right;
-  font-size: 10px;
-  color: #8b1a1a;
-  text-decoration: underline;
-  margin-left: 4px;
-}
-
-.history-list .history-rename {
-  color: #003366;
 }
 
 /* -------------------------------------------------------------------------
@@ -616,41 +686,48 @@ li {
 }
 
 /* -------------------------------------------------------------------------
- * Standalone sub-pages (about.htm / newchat.htm) — no modal overlay.
+ * Standalone about/newchat pages — same chrome as the 2026-06 modal dialog.
+ * (Still a full page; no overlay mask. Visual match only.)
  * ------------------------------------------------------------------------- */
-.subpage-panel {
-  width: 738px;
-  margin: 0 auto;
+.page-dialog {
+  width: 420px;
+  margin: 24px auto 0 auto;
   background: #ffffff;
-  border: 1px solid #888;
+  border: 1px solid #444;
+  padding: 0;
   text-align: left;
 }
-.subpage-title {
+.modal-title {
   background: #003366;
   color: #ffffff;
   font-weight: bold;
   font-size: 12px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-bottom: 1px solid #444;
-  line-height: 18px;
 }
-.subpage-title img {
-  vertical-align: middle;
-  margin-right: 6px;
-}
-.subpage-body {
-  padding: 10px 12px;
+.modal-body {
+  padding: 8px;
   font-size: 12px;
   color: #333;
-  min-height: 200px;
+  background: #ffffff;
 }
-.subpage-footer {
+.modal-footer {
   border-top: 1px solid #888;
   background: #ece8df;
-  padding: 6px 8px;
-  text-align: left;
+  padding: 4px 6px;
+  text-align: right;
   overflow: hidden;
   zoom: 1;
+}
+.about-logo {
+  line-height: 48px;
+  font-size: 14px;
+  font-weight: bold;
+  margin: 0 0 8px 0;
+}
+.about-logo img {
+  margin-right: 8px;
+  vertical-align: middle;
 }
 .header-home-link {
   color: #333;
@@ -658,36 +735,6 @@ li {
 }
 .header-home-link:hover {
   color: #990000;
-}
-.about-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.about-rows li {
-  margin: 0 0 8px 0;
-  padding: 4px 0 4px 0;
-  border-bottom: 1px solid #ddd;
-  overflow: hidden;
-  zoom: 1;
-  line-height: 18px;
-}
-.about-rows .about-ico {
-  float: left;
-  width: 20px;
-  height: 16px;
-  margin-right: 8px;
-}
-.about-rows .about-label {
-  float: left;
-  width: 140px;
-  color: #666;
-  font-size: 11px;
-}
-.about-rows .about-value {
-  display: block;
-  margin-left: 168px;
-  color: #333;
 }
 
 /* -------------------------------------------------------------------------
@@ -795,36 +842,50 @@ select {
  * was redundant with the header brand row and is no longer rendered. */
 
 /* -------------------------------------------------------------------------
- * chat.htm layout additions (formerly inlined in chat.htm).
- * IE6-safe: table-era layout, simple class selectors, square edges.
- * The goal is to keep the 2001-era aesthetic and only define what's
- * strictly needed for the new input-toolbar / sidebar-footer / modal
- * structures that chat.htm introduces.
+ * chat.htm shell — liquid width (same rules as .wrap).
+ * Large resolutions: use ~92% up to 1400px so the main pane grows.
+ * Small windows: floor near 760 (or viewport - 16).
  * ------------------------------------------------------------------------- */
 .app-shell {
-  width: 760px;
+  width: 92%;
+  max-width: 1400px;
+  min-width: 760px;
   margin: 0 auto;
   padding: 8px;
   text-align: left;
 }
+* html .app-shell {
+  width: expression(
+    (function () {
+      var w = document.documentElement.clientWidth
+            ? document.documentElement.clientWidth
+            : document.body.clientWidth;
+      var t = Math.floor(w * 0.92);
+      if (t < 760) { t = (w < 780) ? (w - 16) : 760; }
+      if (t > 1400) { t = 1400; }
+      if (t > w - 16) { t = w - 16; }
+      return t + 'px';
+    })()
+  );
+}
 .app-shell .header {
   padding: 6px 10px;
-  width: 738px;
+  width: auto;
 }
 .app-shell .header-logo {
   font-size: 22px;
-  line-height: 36px;
+  line-height: 48px;
 }
 .app-shell .header-logo img {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
 }
 .app-shell .lang-switcher {
   margin-top: 7px;
 }
 .input-area textarea.msg-input {
-  width: 530px;
-  height: 42px;
+  width: 98%;
+  height: 48px;
 }
 .input-area .input-toolbar {
   clear: both;
@@ -891,7 +952,7 @@ select {
 }
 .input-area .input-toolbar-actions .send-button { font-weight: bold; }
 .history-search {
-  width: 168px;
+  width: 96%;
   margin: 0 0 4px 0;
   padding: 2px 3px;
   font-size: 11px;
@@ -925,17 +986,6 @@ select {
 .newchat-list .newchat-badges { margin-top: 2px; }
 .newchat-list .newchat-actions { margin-top: 6px; text-align: right; overflow: hidden; zoom: 1; }
 .newchat-list .newchat-actions .btn { float: right; margin-left: 4px; }
-
-.about-logo {
-  line-height: 48px;
-  font-size: 14px;
-  font-weight: bold;
-  margin: 0 0 12px 0;
-}
-.about-logo img {
-  margin-right: 8px;
-  vertical-align: middle;
-}
 
 /* -------------------------------------------------------------------------
  * Login page: large logo + slogan below the login form

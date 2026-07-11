@@ -240,6 +240,7 @@ if (!function_exists('sc_config_fatal_errors')) {
             'missing_server_port' => true,
             'missing_auth_user' => true,
             'auth_user_password_is_placeholder' => true,
+            'auth_user_password_duplicate' => true,
         );
         foreach ($errors as $err) {
             $code = (string)$err;
@@ -250,6 +251,7 @@ if (!function_exists('sc_config_fatal_errors')) {
             if (preg_match('/^User .+_(active|can_edit_config)_invalid$/', $code)
                 || preg_match('/^User .+_excluded_model_missing:/', $code)
                 || preg_match('/^User .+_excluded_model_inactive:/', $code)
+                || preg_match('/^User .+_password_duplicate$/', $code)
                 || preg_match('/^Model .+_(active_invalid|missing_api_base|missing_api_key|api_key_is_placeholder|invalid_type|missing_model)$/', $code)
                 || preg_match('/^Provider [0-9]+_section_not_supported$/', $code)) {
                 $fatal[] = $code;
@@ -405,9 +407,13 @@ if (!function_exists('sc_validate_config')) {
             }
         }
 
-        /* One [User NAME].password must be present and not a placeholder. */
+        /* One [User NAME].password must be present and not a placeholder.
+         * Passwords must be unique across users: login matches by password
+         * only, so duplicates make accounts indistinguishable. */
         $has_user = false;
         $user_placeholder = false;
+        $seen_passwords = array();
+        $password_duplicate = false;
         foreach ($cfg as $section => $section_data) {
             if (!is_string($section) || !is_array($section_data)) {
                 continue;
@@ -420,6 +426,17 @@ if (!function_exists('sc_validate_config')) {
                         ? (string)$section_data['password'] : '';
             if (sc_is_placeholder_password($raw_pass)) {
                 $user_placeholder = true;
+            }
+            $pass_key = $raw_pass;
+            if ($pass_key !== '' && !sc_is_placeholder_password($raw_pass)) {
+                if (isset($seen_passwords[$pass_key])) {
+                    $password_duplicate = true;
+                    $errors[] = $section . '_password_duplicate';
+                    $errors[] = $seen_passwords[$pass_key]
+                              . '_password_duplicate';
+                } else {
+                    $seen_passwords[$pass_key] = $section;
+                }
             }
             if (isset($section_data['active'])
                 && !sc_config_bool_value_valid($section_data['active'])) {
@@ -452,6 +469,9 @@ if (!function_exists('sc_validate_config')) {
             $errors[] = 'missing_auth_user';
         } elseif ($user_placeholder) {
             $errors[] = 'auth_user_password_is_placeholder';
+        }
+        if ($password_duplicate) {
+            $errors[] = 'auth_user_password_duplicate';
         }
         /* [paths].stunnel / [paths].ca_cert: soft-check existence.
          * CONF.ini stores these as either absolute or relative

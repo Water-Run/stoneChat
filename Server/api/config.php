@@ -272,6 +272,20 @@ if (!function_exists('sc_api_config_build_payload')) {
                 );
             }
         }
+        /* Model list must honour per-user excluded_models (same as
+         * /api/providers and chat dispatch). Otherwise a restricted
+         * account can still see forbidden model ids in the public config. */
+        $providers = array();
+        if (function_exists('sc_load_providers')) {
+            $providers = sc_load_providers($path);
+        }
+        if (!is_array($providers)) {
+            $providers = array();
+        }
+        if ($username !== '' && function_exists('sc_auth_filter_providers')) {
+            $providers = sc_auth_filter_providers($providers, $cfg, $username);
+        }
+
         return sc_api_config_add_csrf($cfg, array(
             'title'               => $title,
             'default_lang'        => $default_lang,
@@ -280,9 +294,7 @@ if (!function_exists('sc_api_config_build_payload')) {
             'can_edit_config'     => ($allow_online_editor && $can_edit_config),
             'send_shortcut'       => $send_shortcut,
             'username'            => $username,
-            'providers'           => sc_api_config_sanitize_providers(
-                                         sc_load_providers($path)
-                                     ),
+            'providers'           => sc_api_config_sanitize_providers($providers),
             'langs'               => sc_i18n_supported_langs(),
             'auth_enabled'        => sc_api_config_resolve_auth_enabled($cfg),
             'runtime'             => sc_api_config_runtime_info(),

@@ -191,21 +191,26 @@
                 continue;
             }
             shown++;
-            html += '<li data-id="' + escHtml(id) + '">'
-                  +   '<a href="javascript:void(0)" '
+            /* IE6: float:right actions MUST come before the block main link,
+             * otherwise [r]/[x] drop under the row or stack as a stray column. */
+            html += '<li class="history-item" data-id="' + escHtml(id) + '">'
+                  +   '<span class="history-actions">'
+                  +     '<a class="history-rename" href="javascript:void(0)" '
+                  +       'onclick="SC.App.renameChatPrompt(\'' + escJs(id)
+                  +         '\', \'' + escHtml(escJs(title)) + '\')">[r]</a>'
+                  +     '<a class="history-delete" href="javascript:void(0)" '
+                  +       'onclick="SC.App.deleteChat(\'' + escJs(id)
+                  +         '\')">[x]</a>'
+                  +   '</span>'
+                  +   '<a class="history-main" href="javascript:void(0)" '
                   +     'onclick="SC.App.loadChat(\'' + escJs(id) + '\')">'
-                  +     '<span class="history-title">' + escHtml(title) + '</span>'
+                  +     '<span class="history-title">' + escHtml(title)
+                  +     '</span>'
                   +     '<span class="history-meta">'
                   +       escHtml(meta)
-                  +       (msgCount ? ' &middot; ' + msgCount + ' msg' : '')
+                  +       (msgCount ? ' · ' + msgCount + ' msg' : '')
                   +     '</span>'
                   +   '</a>'
-                  +   '<a class="history-rename" href="javascript:void(0)" '
-                  +     'onclick="SC.App.renameChatPrompt(\'' + escJs(id) + '\', \'' + escHtml(escJs(title)) + '\')">'
-                  +     '[r]</a>'
-                  +   '<a class="history-delete" href="javascript:void(0)" '
-                  +     'onclick="SC.App.deleteChat(\'' + escJs(id) + '\')">'
-                  +     '[x]</a>'
                   + '</li>';
         }
         if (shown === 0) {
@@ -260,8 +265,8 @@
               +   '<span class="badge-row">';
         if (!provider.stream) {
             html += '<span class="status-badge status-off">'
-                  + '<img class="btn-icon" src="../Assets/icons/error.png" '
-                  + 'width="12" height="12" alt="" /> non-stream</span>';
+                  + escHtml(tr('chat.nonStream', 'non-stream'))
+                  + '</span>';
         }
         html +=   '</span></div>';
         menu.innerHTML = html;
@@ -297,7 +302,9 @@
     }
 
     function yesNo(flag) {
-        return flag ? 'Yes' : 'No';
+        return flag
+            ? tr('common.yes', 'Yes')
+            : tr('common.no', 'No');
     }
 
     function detectModernBrowser() {
@@ -323,34 +330,26 @@
         var title = (currentConfig && currentConfig.title) ? currentConfig.title : 'stoneChat';
         var runtime = (currentConfig && currentConfig.runtime)
                     ? currentConfig.runtime : {};
-        var rows = '';
-        function row(ico, label, valueHtml) {
-            rows += '<li>'
-                 +  '<img class="about-ico" src="../Assets/icons/' + ico
-                 +    '.png" width="16" height="16" alt="" />'
-                 +  '<span class="about-label">' + escHtml(label) + '</span>'
-                 +  '<span class="about-value">' + valueHtml + '</span>'
-                 +  '</li>';
-        }
-        row('window', tr('about.modernWindows', 'Modern Windows') + ':',
-            escHtml(yesNo(!!runtime.modern_windows)));
-        row('network', tr('about.modernBrowser', 'Modern Browser') + ':',
-            escHtml(yesNo(detectModernBrowser())));
-        row('log', tr('about.timezone', 'Time Zone') + ':',
-            escHtml(runtime.timezone || '-'));
-        row('settings', tr('about.runtime', 'Runtime') + ':',
-            escHtml('PHP ' + (runtime.php_version || '-')
-                    + ' / ' + (runtime.os || '-')));
-        row('home', tr('about.author', 'Author') + ':', 'WaterRun');
-        row('about', 'GitHub:',
-            '<a href="https://github.com/WaterRun/stoneChat" target="_blank">'
-            + 'github.com/WaterRun/stoneChat</a>');
-
+        /* Match 2026-06 modal about body (logo + fields), with i18n labels. */
         body.innerHTML =
             '<p class="about-logo"><img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />'
           + '<strong>' + escHtml(title) + '</strong></p>'
-          + '<p class="muted">"a caveman peeking at modern technology"</p>'
-          + '<ul class="about-rows">' + rows + '</ul>';
+          + '<p>"' + escHtml(tr('app.tagline',
+                'a caveman peeking at modern technology')) + '"</p>'
+          + '<p>' + escHtml(tr('about.modernWindows', 'Modern Windows')) + ': '
+          +   escHtml(yesNo(!!runtime.modern_windows)) + '</p>'
+          + '<p>' + escHtml(tr('about.modernBrowser', 'Modern Browser')) + ': '
+          +   escHtml(yesNo(detectModernBrowser())) + '</p>'
+          + '<p>' + escHtml(tr('about.timezone', 'Time Zone')) + ': '
+          +   escHtml(runtime.timezone || '-') + '</p>'
+          + '<p>' + escHtml(tr('about.php', 'PHP')) + ': '
+          +   escHtml(runtime.php_version || '-')
+          + ' / ' + escHtml(tr('about.os', 'OS')) + ': '
+          +   escHtml(runtime.os || '-') + '</p>'
+          + '<p>' + escHtml(tr('about.author', 'Author')) + ': WaterRun.</p>'
+          + '<p>' + escHtml(tr('about.github', 'GitHub')) + ': '
+          +   '<a href="https://github.com/WaterRun/stoneChat" target="_blank">'
+          +   'github.com/WaterRun/stoneChat</a></p>';
     }
 
     function fillNewChatList() {
@@ -451,8 +450,8 @@
         }
         return '<div class="newchat-badges">'
              + '<span class="status-badge status-off">'
-             + '<img class="btn-icon" src="../Assets/icons/error.png" '
-             + 'width="12" height="12" alt="" /> non-stream</span></div>';
+             + escHtml(tr('chat.nonStream', 'non-stream'))
+             + '</span></div>';
     }
 
     // -------------------------------------------------------------------------
@@ -474,8 +473,11 @@
         // On the dedicated newchat page, jump back to chat with the new id.
         if (!isChatPage()) {
             try {
-                window.location.href = 'chat.htm?id='
-                    + encodeURIComponent(newId);
+                var dest = 'chat.htm?id=' + encodeURIComponent(newId);
+                if (SC.I18n && typeof SC.I18n.withLang === 'function') {
+                    dest = SC.I18n.withLang(dest);
+                }
+                window.location.href = dest;
             } catch (e) { /* ignore */ }
             return;
         }

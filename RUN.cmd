@@ -343,6 +343,14 @@ echo.
 :: ------------------------------------------------------------
 :: Launch
 :: ------------------------------------------------------------
+:: Optional local mock LLM (CONF_SMP MockLocal uses port 9998).
+:: Started minimized so a stock sample config can chat out of the box.
+if exist "%~dp0Server\api\mock_llm.php" (
+    echo Starting mock LLM helper on http://localhost:9998/ ...
+    start "stoneChat-mock" /MIN cmd /c "cd /d ""%~dp0"" && php -S localhost:9998 Pages\router.php"
+    ping 127.0.0.1 -n 2 >nul
+)
+
 if "!SC_MODERN!"=="1" (
     echo Opening browser to http://localhost:!SC_PORT!/ ^(-- modern splash first --^)
 ) else (
