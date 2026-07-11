@@ -13,20 +13,22 @@
  *   bootstrap()              page-load entry point (auto-called)
  *   renderHistoryList(chats) sidebar list
  *   renderTopMenu(provider)  top status row
- *   showNewChatDialog()      modal: pick a provider to start a new chat
- *   showAboutDialog()        modal: environment / author / GitHub
- *   openConfigFile()         degraded hint (browser cannot open local)
+ *   showNewChatDialog()      navigate to Pages/newchat.htm
+ *   showAboutDialog()        navigate to Pages/about.htm
+ *   bootstrapAboutPage()     fill about.htm body
+ *   bootstrapNewChatPage()   fill newchat.htm provider list
+ *   openConfigFile()         open editor.php window
  *   reloadConfig()           ask server to re-read CONF.ini, then reload
  *   deleteChat(chatId)       confirm then SC.Api.deleteChat
  *   renameChat(id, name)     SC.Api.renameChat
  *   connectCheck(providerId) SC.Api.connectCheck (defaults to current)
  *   logout()                 stop stream, async logout, then redirect
  *
- * Expected DOM IDs (provided by chat.htm)
- *   sc-logo, sc-lang-switcher, sc-new-chat-btn, sc-reload-config-btn,
- *   sc-open-config-btn, sc-logout-btn, sc-history-list, sc-top-menu,
- *   sc-modal-mask, sc-modal-about, sc-modal-new-chat, sc-about-body,
- *   sc-newchat-list, sc-modal-close
+ * Expected DOM IDs
+ *   chat.htm: sc-logo, sc-lang-switcher, sc-new-chat-btn, sc-reload-config-btn,
+ *             sc-open-config-btn, sc-logout-btn, sc-history-list, sc-top-menu
+ *   about.htm: sc-about-body
+ *   newchat.htm: sc-newchat-list
  * ------------------------------------------------------------------------- */
 (function () {
     'use strict';
@@ -137,26 +139,28 @@
     }
 
     // -------------------------------------------------------------------------
-    // Modal helpers. There is one mask and any number of dialogs; showing a
-    // dialog reveals the mask and the panel, hiding clears both. Clicking
-    // the mask *itself* (not a child dialog element) or any element with
-    // class "sc-modal-close" hides everything.
+    // Page helpers (separate pages replace IE6-hostile modal overlays).
     // -------------------------------------------------------------------------
-    function showModal(dialogId) {
-        var mask = $id('sc-modal-mask');
-        var dlg = $id(dialogId);
-        if (mask) { mask.className = 'modal-mask modal-show'; }
-        if (dlg)  { dlg.className = 'modal-dialog modal-show'; }
+    function queryParam(name) {
+        var q = '';
+        try { q = String(window.location.search || ''); } catch (e) { q = ''; }
+        if (q.charAt(0) === '?') { q = q.substring(1); }
+        var parts = q.split('&');
+        for (var i = 0; i < parts.length; i++) {
+            var kv = parts[i].split('=');
+            if (decodeURIComponent(kv[0] || '') === name) {
+                return decodeURIComponent(kv[1] || '');
+            }
+        }
+        return '';
+    }
+
+    function isChatPage() {
+        return !!$id('chat-messages');
     }
 
     function hideModal() {
-        var mask = $id('sc-modal-mask');
-        if (mask) { mask.className = 'modal-mask'; }
-        var ids = ['sc-modal-about', 'sc-modal-new-chat'];
-        for (var i = 0; i < ids.length; i++) {
-            var d = $id(ids[i]);
-            if (d) { d.className = 'modal-dialog'; }
-        }
+        /* Kept as a no-op for any leftover callers. */
     }
 
     // -------------------------------------------------------------------------
@@ -256,7 +260,8 @@
               +   '<span class="badge-row">';
         if (!provider.stream) {
             html += '<span class="status-badge status-off">'
-                  + '&#128274; non-stream</span>';
+                  + '<img class="btn-icon" src="../Assets/icons/error.png" '
+                  + 'width="12" height="12" alt="" /> non-stream</span>';
         }
         html +=   '</span></div>';
         menu.innerHTML = html;
@@ -302,42 +307,53 @@
     }
 
     // -------------------------------------------------------------------------
-    // About dialog. Pulls title from the loaded config when available;
-    // everything else is hard-coded (the values are constants, not user
-    // input, so plain innerHTML is safe here).
+    // About / New chat: navigate to standalone pages (B1 multi-page UX).
     // -------------------------------------------------------------------------
     function showAboutDialog() {
+        try { window.location.href = 'about.htm'; } catch (e) { /* ignore */ }
+    }
+
+    function showNewChatDialog() {
+        try { window.location.href = 'newchat.htm'; } catch (e) { /* ignore */ }
+    }
+
+    function renderAboutBody() {
         var body = $id('sc-about-body');
         if (!body) { return; }
         var title = (currentConfig && currentConfig.title) ? currentConfig.title : 'stoneChat';
         var runtime = (currentConfig && currentConfig.runtime)
                     ? currentConfig.runtime : {};
+        var rows = '';
+        function row(ico, label, valueHtml) {
+            rows += '<li>'
+                 +  '<img class="about-ico" src="../Assets/icons/' + ico
+                 +    '.png" width="16" height="16" alt="" />'
+                 +  '<span class="about-label">' + escHtml(label) + '</span>'
+                 +  '<span class="about-value">' + valueHtml + '</span>'
+                 +  '</li>';
+        }
+        row('window', tr('about.modernWindows', 'Modern Windows') + ':',
+            escHtml(yesNo(!!runtime.modern_windows)));
+        row('network', tr('about.modernBrowser', 'Modern Browser') + ':',
+            escHtml(yesNo(detectModernBrowser())));
+        row('log', tr('about.timezone', 'Time Zone') + ':',
+            escHtml(runtime.timezone || '-'));
+        row('settings', tr('about.runtime', 'Runtime') + ':',
+            escHtml('PHP ' + (runtime.php_version || '-')
+                    + ' / ' + (runtime.os || '-')));
+        row('home', tr('about.author', 'Author') + ':', 'WaterRun');
+        row('about', 'GitHub:',
+            '<a href="https://github.com/WaterRun/stoneChat" target="_blank">'
+            + 'github.com/WaterRun/stoneChat</a>');
+
         body.innerHTML =
             '<p class="about-logo"><img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />'
           + '<strong>' + escHtml(title) + '</strong></p>'
-          + '<p>"a caveman peeking at modern technology"</p>'
-          + '<p>Modern Windows: '
-          +   escHtml(yesNo(!!runtime.modern_windows)) + '</p>'
-          + '<p>Modern Browser: '
-          +   escHtml(yesNo(detectModernBrowser())) + '</p>'
-          + '<p>Time Zone: '
-          +   escHtml(runtime.timezone || '-') + '</p>'
-          + '<p>PHP: ' + escHtml(runtime.php_version || '-')
-          + ' / OS: ' + escHtml(runtime.os || '-') + '</p>'
-          + '<p>Author: WaterRun.</p>'
-          + '<p>GitHub: '
-          +   '<a href="https://github.com/WaterRun/stoneChat" '
-          +     'target="_blank">github.com/WaterRun/stoneChat</a></p>';
-        showModal('sc-modal-about');
+          + '<p class="muted">"a caveman peeking at modern technology"</p>'
+          + '<ul class="about-rows">' + rows + '</ul>';
     }
 
-    // -------------------------------------------------------------------------
-    // "New chat" dialog. Loads providers via SC.Api.getProviders and
-    // renders one row per provider with a per-row "Test" and "Use" button.
-    // "Test" pings the provider without creating a chat; "Use" creates a
-    // fresh conversation via SC.Api.createChat and dispatches to chat.js.
-    // -------------------------------------------------------------------------
-    function showNewChatDialog() {
+    function fillNewChatList() {
         var list = $id('sc-newchat-list');
         if (!list) { return; }
         var resp = SC.Api.getProviders();
@@ -345,18 +361,47 @@
             renderNewChatError(list,
                 tr('chat.loadModelsFailed', 'Failed to load models') + ': '
                 + errText(resp));
-            showModal('sc-modal-new-chat');
             return;
         }
         var providers = (resp.data && resp.data.providers)
                       ? resp.data.providers : [];
         if (providers.length === 0) {
             renderNewChatError(list, tr('chat.noModels', 'No models configured.'));
-            showModal('sc-modal-new-chat');
             return;
         }
         list.innerHTML = renderNewChatListHTML(providers);
-        showModal('sc-modal-new-chat');
+    }
+
+    function requireAuthOrLogin() {
+        if (typeof SC.Api.checkAuth !== 'function') { return true; }
+        var authResp = SC.Api.checkAuth();
+        if (!authResp || !authResp.ok) {
+            window.location.href = loginUrl;
+            return false;
+        }
+        return true;
+    }
+
+    function bootstrapAboutPage() {
+        if (typeof SC.Api === 'undefined' || !SC.Api) { return; }
+        if (!requireAuthOrLogin()) { return; }
+        var cfgResp = SC.Api.getConfig();
+        if (cfgResp && cfgResp.ok && cfgResp.data) {
+            currentConfig = cfgResp.data;
+        }
+        renderLangSwitcher();
+        renderAboutBody();
+    }
+
+    function bootstrapNewChatPage() {
+        if (typeof SC.Api === 'undefined' || !SC.Api) { return; }
+        if (!requireAuthOrLogin()) { return; }
+        var cfgResp = SC.Api.getConfig();
+        if (cfgResp && cfgResp.ok && cfgResp.data) {
+            currentConfig = cfgResp.data;
+        }
+        renderLangSwitcher();
+        fillNewChatList();
     }
 
     // Render a single error / empty-state row inside the new-chat list.
@@ -406,7 +451,8 @@
         }
         return '<div class="newchat-badges">'
              + '<span class="status-badge status-off">'
-             + '&#128274; non-stream</span></div>';
+             + '<img class="btn-icon" src="../Assets/icons/error.png" '
+             + 'width="12" height="12" alt="" /> non-stream</span></div>';
     }
 
     // -------------------------------------------------------------------------
@@ -424,7 +470,15 @@
             return;
         }
         var newId = resp.data.id;
-        hideModal();
+
+        // On the dedicated newchat page, jump back to chat with the new id.
+        if (!isChatPage()) {
+            try {
+                window.location.href = 'chat.htm?id='
+                    + encodeURIComponent(newId);
+            } catch (e) { /* ignore */ }
+            return;
+        }
 
         // Refresh sidebar list so the brand-new conversation appears.
         var h = SC.Api.getHistory();
@@ -669,19 +723,11 @@
     // buttons, modal close handlers). Called once from bootstrap().
     // -------------------------------------------------------------------------
     function bindGlobalEvents() {
-        bindEvent($id('sc-logo'),              'click', showAboutDialog);
-        bindEvent($id('sc-new-chat-btn'),      'click', showNewChatDialog);
+        /* Logo / New chat / About are real <a href> links to standalone pages.
+         * Only wire non-navigation actions here. */
         bindEvent($id('sc-reload-config-btn'), 'click', reloadConfig);
         bindEvent($id('sc-open-config-btn'),   'click', openConfigFile);
-        bindEvent($id('sc-about-btn'),         'click', showAboutDialog);
         bindEvent($id('sc-logout-btn'),        'click', logout);
-        bindEvent($id('sc-modal-mask'), 'click', function (e) {
-            /* Only hide when the click lands on the mask itself, not on
-             * a child dialog element. IE6 uses srcElement; W3C uses target. */
-            var evt = e || window.event;
-            var tgt = evt ? (evt.target || evt.srcElement) : null;
-            if (tgt === $id('sc-modal-mask')) { hideModal(); }
-        });
         bindEvent($id('sc-history-search'),    'keyup', function () {
             var node = $id('sc-history-search');
             historySearchText = node ? String(node.value || '').toLowerCase() : '';
@@ -698,16 +744,6 @@
                                 tr('sidebar.search', 'Search conversations'));
             search.setAttribute('placeholder',
                                 tr('sidebar.search', 'Search conversations'));
-        }
-
-        // Any button carrying class "sc-modal-close" hides the open dialog.
-        var nodes = document.getElementsByTagName('button');
-        for (var i = 0; i < nodes.length; i++) {
-            var b = nodes[i];
-            if (b.className
-                && b.className.indexOf('sc-modal-close') >= 0) {
-                bindEvent(b, 'click', hideModal);
-            }
         }
     }
 
@@ -776,11 +812,14 @@
             SC.Chat.init(currentConfig, providers);
         }
 
-        // 7. Wire persistent UI chrome (logo / sidebar / toolbar / modals).
+        // 7. Wire persistent UI chrome (sidebar / toolbar actions).
         bindGlobalEvents();
 
-        // 8. Load the first chat on bootstrap if present.
-        if (currentChats && currentChats.length > 0) {
+        // 8. Prefer ?id= from newchat.htm redirect; else first history row.
+        var wantId = queryParam('id');
+        if (wantId) {
+            loadChat(wantId);
+        } else if (currentChats && currentChats.length > 0) {
             loadChat(currentChats[0].id);
         }
     }
@@ -789,33 +828,32 @@
     // Export.
     // -------------------------------------------------------------------------
     SC.App = {
-        bootstrap:          bootstrap,
-        renderHistoryList:  renderHistoryList,
-        renderTopMenu:      renderTopMenu,
-        renderLangSwitcher: renderLangSwitcher,
-        showNewChatDialog:  showNewChatDialog,
-        showAboutDialog:    showAboutDialog,
-        openConfigFile:     openConfigFile,
-        reloadConfig:       reloadConfig,
-        deleteChat:         deleteChat,
-        renameChat:         renameChat,
-        renameChatPrompt:   renameChatPrompt,
-        connectCheck:       connectCheck,
-        logout:             logout,
-        loadChat:           loadChat,
-        pickProvider:       pickProvider,
-        hideModal:          hideModal
+        bootstrap:            bootstrap,
+        bootstrapAboutPage:   bootstrapAboutPage,
+        bootstrapNewChatPage: bootstrapNewChatPage,
+        renderHistoryList:    renderHistoryList,
+        renderTopMenu:        renderTopMenu,
+        renderLangSwitcher:   renderLangSwitcher,
+        showNewChatDialog:    showNewChatDialog,
+        showAboutDialog:      showAboutDialog,
+        openConfigFile:       openConfigFile,
+        reloadConfig:         reloadConfig,
+        deleteChat:           deleteChat,
+        renameChat:           renameChat,
+        renameChatPrompt:     renameChatPrompt,
+        connectCheck:         connectCheck,
+        logout:               logout,
+        loadChat:             loadChat,
+        pickProvider:         pickProvider,
+        hideModal:            hideModal
     };
 
     window.SC = SC;
     // Lowercase alias kept for any in-tree callers already using it.
     window.scApp = SC.App;
 
-    // Auto-bootstrap: include this script via defer or as the last tag in
-    // <body> so the elements referenced above already exist.
-    if (typeof document !== 'undefined'
-        && document.getElementsByTagName
-        && document.body) {
-        bootstrap();
-    }
+    /* Do NOT auto-bootstrap on script load: about.htm / newchat.htm /
+     * chat.htm each call the matching entry from window.onload after
+     * i18n is ready. Auto-running bootstrap() on every page would
+     * redirect newchat/about back to index when chat DOM is missing. */
 }());

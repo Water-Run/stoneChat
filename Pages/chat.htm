@@ -4,95 +4,80 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat</title>
-<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711a" />
-<script type="text/javascript" src="js/i18n.js?v=20260711a"></script>
-<script type="text/javascript" src="js/api.js?v=20260711a"></script>
-<script type="text/javascript" src="js/chat.js?v=20260711a"></script>
-<script type="text/javascript" src="js/app.js?v=20260711a"></script>
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711b" />
+<script type="text/javascript" src="js/i18n.js?v=20260711b"></script>
+<script type="text/javascript" src="js/api.js?v=20260711b"></script>
+<script type="text/javascript" src="js/chat.js?v=20260711b"></script>
+<script type="text/javascript" src="js/app.js?v=20260711b"></script>
 </head>
 <body>
 <div class="app-shell">
-  <!-- Header: brand logo (click -> SC.App.showAboutDialog) + language switcher.
-       The id="sc-logo" is what app.js binds to open the About dialog. -->
+  <!-- Header: brand logo -> About page; language switcher on the right. -->
   <div class="header">
     <div class="header-logo" id="sc-logo">
-      <img src="../Assets/logo_icon.png" alt="stoneChat" width="48" height="48" />
-      <span data-i18n="app.title">stoneChat</span>
+      <a href="about.htm" class="header-home-link" title="About">
+        <img src="../Assets/logo_icon.png" alt="stoneChat" width="36" height="36" />
+        <span data-i18n="app.title">stoneChat</span>
+      </a>
     </div>
     <div class="lang-switcher" id="sc-lang-switcher"></div>
     <div class="clear"></div>
   </div>
 
-  <!-- Two-column chat layout: sidebar (left) + main content (right).
-       The 760px width matches the header for a tidy, centered look. -->
+  <!-- Two-column chat layout: sidebar (left) + main content (right). -->
   <div class="chat-layout">
     <div class="sidebar">
+      <!-- IE6: float:right control MUST come before the title text node. -->
       <div class="sidebar-header">
-        <span data-i18n="sidebar.history">History</span>
-        <a class="btn new-chat" id="sc-new-chat-btn" href="javascript:void(0)" data-i18n="chat.newChat">[+ New chat]</a>
+        <a class="btn new-chat" id="sc-new-chat-btn" href="newchat.htm" title="New chat">
+          <img class="btn-icon" src="../Assets/icons/new.png" width="16" height="16" alt="" />
+          <span data-i18n="chat.newChat">New chat</span>
+        </a>
+        <span class="sidebar-title" data-i18n="sidebar.history">History</span>
       </div>
       <ul class="history-list" id="sc-history-list"></ul>
       <div class="sidebar-footer">
         <input type="text" class="history-search" id="sc-history-search" value="" data-i18n-title="sidebar.search" />
         <a class="btn" id="sc-open-config-btn" href="javascript:void(0)" style="display:none" data-i18n="chat.editConfig">[Edit config]</a>
         <a class="btn" id="sc-reload-config-btn" href="javascript:void(0)" data-i18n="chat.reloadConfig">[Reload config]</a>
-        <a class="btn" id="sc-about-btn" href="javascript:void(0)" data-i18n="chat.about">[About]</a>
+        <a class="btn" id="sc-about-btn" href="about.htm">
+          <img class="btn-icon" src="../Assets/icons/about.png" width="16" height="16" alt="" />
+          <span data-i18n="chat.about">About</span>
+        </a>
         <a class="btn" id="sc-logout-btn" href="javascript:void(0)" data-i18n="chat.logout">[Logout]</a>
       </div>
     </div>
     <div class="main-content">
-      <!-- Top status menu. Populated by SC.App.renderTopMenu():
-           model name | check button | tokens | timeout | stream badge. -->
       <div class="top-menu" id="sc-top-menu">
         <span class="muted">Loading...</span>
       </div>
-      <!-- Message bubbles go here. Populated by SC.Chat.renderMessage(). -->
       <div class="chat-messages" id="chat-messages"></div>
-      <!-- Input area. id="chat-input" matches what Pages/js/chat.js looks for;
-           name="msg-input" is kept as a form-friendly alias. The toolbar
-           carries char count, wait countdown, and send/stop/regenerate. -->
       <div class="input-area">
         <textarea id="chat-input" name="msg-input" class="msg-input" rows="3" cols="60"></textarea>
+        <!-- Two rows: meta line + action buttons (IE6-safe, no one-line squeeze). -->
         <div class="input-toolbar">
-          <span class="char-count" id="char-count">...</span>
-          <span class="countdown" id="countdown">...</span>
-          <span class="send-hint" id="send-hint">...</span>
-          <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)" data-i18n="chat.regenerate">[Regenerate]</a>
-          <a class="btn name-button" id="name-button" href="javascript:void(0)" data-i18n="chat.generateTitle">[Title]</a>
-          <a class="btn stop-button" id="stop-button" href="javascript:void(0)" data-i18n="chat.stop">[Stop]</a>
-          <a class="btn send-button" id="send-button" href="javascript:void(0)" data-i18n="chat.send">[Send]</a>
+          <div class="input-toolbar-meta">
+            <span class="char-count" id="char-count">...</span>
+            <span class="countdown" id="countdown">...</span>
+            <span class="send-hint" id="send-hint">...</span>
+          </div>
+          <div class="input-toolbar-actions">
+            <a class="btn send-button" id="send-button" href="javascript:void(0)">
+              <img class="btn-icon" src="../Assets/icons/send.png" width="16" height="16" alt="" />
+              <span data-i18n="chat.send">Send</span>
+            </a>
+            <a class="btn stop-button" id="stop-button" href="javascript:void(0)">
+              <img class="btn-icon" src="../Assets/icons/stop.png" width="16" height="16" alt="" />
+              <span data-i18n="chat.stop">Stop</span>
+            </a>
+            <a class="btn name-button" id="name-button" href="javascript:void(0)" data-i18n="chat.generateTitle">Title</a>
+            <a class="btn regenerate-button" id="regenerate-button" href="javascript:void(0)">
+              <img class="btn-icon" src="../Assets/icons/regenerate.png" width="16" height="16" alt="" />
+              <span data-i18n="chat.regenerate">Regenerate</span>
+            </a>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal mask + dialogs. Used by SC.App.showModal()/hideModal().
-     The dialogs are hidden by default (CSS) and revealed by toggling
-     the "modal-show" className. -->
-<div class="modal-mask" id="sc-modal-mask">
-  <div class="modal-dialog" id="sc-modal-about">
-    <div class="modal-title">
-      <span data-i18n="chat.about">About</span>
-      <button class="sc-modal-close" type="button">[x]</button>
-    </div>
-    <div class="modal-body" id="sc-about-body">
-      <p>stoneChat</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn sc-modal-close" type="button" data-i18n="common.close">[Close]</button>
-    </div>
-  </div>
-  <div class="modal-dialog" id="sc-modal-new-chat">
-    <div class="modal-title">
-      <span data-i18n="chat.newChat">New chat</span>
-      <button class="sc-modal-close" type="button">[x]</button>
-    </div>
-    <div class="modal-body">
-      <ul class="newchat-list" id="sc-newchat-list"></ul>
-    </div>
-    <div class="modal-footer">
-      <button class="btn sc-modal-close" type="button" data-i18n="common.close">[Close]</button>
     </div>
   </div>
 </div>
@@ -100,20 +85,7 @@
 <script type="text/javascript">
 //<![CDATA[
 /* -------------------------------------------------------------------------
- * stoneChat / Pages/chat.htm page-load bootstrap.
- *
- * Runs after all <script> tags have loaded and the DOM is parsed.
- *   1. Initialises SC.I18n (reads cookie + /api/config).
- *   2. Applies translations to every [data-i18n] element.
- *   3. Calls SC.App.bootstrap() which fetches history/providers,
- *      renders the sidebar and top menu, and wires the global event
- *      handlers (logo, sidebar buttons, modal close).
- *
- * Designed for IE6 / Win-XP:
- *   - var/function declarations only, no let/const, no arrow funcs
- *   - No fetch / Promise / localStorage
- *   - try/catch around every API call so a failure in step 1/2 does
- *     not abort step 3 (or vice versa)
+ * stoneChat / Pages/chat.htm page-load bootstrap (IE6 / Win-XP).
  * ------------------------------------------------------------------------- */
 window.onload = function () {
   var SC = (typeof window.SC !== 'undefined' && window.SC) ? window.SC : null;
@@ -122,8 +94,6 @@ window.onload = function () {
   var api  = (SC && SC.Api)  ? SC.Api
            : (typeof window.scApi  !== 'undefined' ? window.scApi  : null);
 
-  // 1+2. Initialise i18n. Fall back to the bundled set in js/i18n.js
-  //      when the server config endpoint is unreachable.
   var supportedLangs = ['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'fr', 'de'];
   var defaultLang = 'en';
   if (api && typeof api.getConfig === 'function') {
@@ -137,7 +107,7 @@ window.onload = function () {
           defaultLang = cfg.data.default_lang;
         }
       }
-    } catch (e) { /* ignore - keep defaults */ }
+    } catch (e) { /* ignore */ }
   }
   if (i18n) {
     if (typeof i18n.init === 'function') {
@@ -148,10 +118,8 @@ window.onload = function () {
     }
   }
 
-  // 3. Bootstrap the chat UI. App.js is included in <head> as the last
-  //    <script> so window.SC.App is guaranteed to exist on load.
   if (SC && SC.App && typeof SC.App.bootstrap === 'function') {
-    try { SC.App.bootstrap(); } catch (e) { /* swallow bootstrap error */ }
+    try { SC.App.bootstrap(); } catch (e) { /* swallow */ }
   }
 };
 //]]>
