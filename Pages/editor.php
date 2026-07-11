@@ -224,10 +224,10 @@ $native_cmd = 'notepad.exe "' . str_replace('"', '', $native_path) . '"';
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat - CONF.ini Editor</title>
-<link rel="stylesheet" type="text/css" href="css/main.css?v=20260623i" />
+<link rel="stylesheet" type="text/css" href="css/main.css?v=20260711a" />
 <style type="text/css">
   body { background: #d4d0c8; color: #000; font-family: Tahoma, "MS Sans Serif", Arial, sans-serif; font-size: 12px; }
-  .editor-wrap { width: 760px; margin: 18px auto; padding: 0; background: #ece9d8; border: 2px outset #fff; }
+  .editor-wrap { width: 760px; margin: 18px auto; padding: 0; background: #ece9d8; border: 2px outset #fff; text-align: left; }
   .editor-title { font-size: 12px; font-weight: bold; color: #fff; background: #0a246a; padding: 4px 6px; }
   .editor-panel { padding: 10px; }
   .editor-warning { background: #ffffe1; border: 1px solid #808080; color: #000; padding: 8px; margin-bottom: 10px; font-size: 12px; }
