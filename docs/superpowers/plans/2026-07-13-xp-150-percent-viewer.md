@@ -620,7 +620,7 @@ Exec=/home/waterrun/.local/bin/vmware-xp-150
 TryExec=/home/waterrun/.local/bin/vmware-xp-150
 Icon=computer
 Terminal=false
-Categories=System;Utility;
+Categories=System;
 StartupNotify=true
 StartupWMClass=io.github.waterrun.XpViewer150
 ```
