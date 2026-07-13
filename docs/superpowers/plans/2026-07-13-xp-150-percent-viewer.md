@@ -697,6 +697,8 @@ import pyatspi
 
 
 def walk(node):
+    if node is None:
+        return
     yield node
     for index in range(node.childCount):
         yield from walk(node.getChildAtIndex(index))
@@ -705,7 +707,13 @@ def walk(node):
 deadline = time.monotonic() + 15
 while time.monotonic() < deadline:
     desktop = pyatspi.Registry.getDesktop(0)
-    for node in walk(desktop):
+    app = None
+    for index in range(desktop.childCount):
+        candidate = desktop.getChildAtIndex(index)
+        if candidate is not None and candidate.name == "vmware-xp-150":
+            app = candidate
+            break
+    for node in walk(app):
         if node.name == "Windows XP 画面":
             expected = "logical=768x576; physical=1536x1152; scale=2"
             assert node.description == expected, (node.description, expected)
