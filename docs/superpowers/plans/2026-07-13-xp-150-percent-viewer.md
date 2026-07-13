@@ -38,8 +38,16 @@ Create `/tmp/test_vmware_xp_150.py` with:
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
+import warnings
 
+import gi
 import pytest
+
+
+warnings.filterwarnings("ignore", category=gi.PyGIDeprecationWarning)
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:GLib.unix_signal_add_full is deprecated"
+)
 
 
 SCRIPT = Path("/home/waterrun/.local/bin/vmware-xp-150")
