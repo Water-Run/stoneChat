@@ -42,39 +42,49 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = "/home/waterrun/.local/bin/vmware-xp-150"
-LOADER = SourceFileLoader("vmware_xp_150", SCRIPT)
-SPEC = spec_from_loader(LOADER.name, LOADER)
-MODULE = module_from_spec(SPEC)
-LOADER.exec_module(MODULE)
+SCRIPT = Path("/home/waterrun/.local/bin/vmware-xp-150")
+
+
+def load_viewer():
+    assert SCRIPT.is_file(), f"viewer script is not installed: {SCRIPT}"
+    loader = SourceFileLoader("vmware_xp_150", str(SCRIPT))
+    spec = spec_from_loader(loader.name, loader)
+    module = module_from_spec(spec)
+    loader.exec_module(module)
+    return module
 
 
 def test_target_geometry_at_current_hidpi_scale():
-    assert MODULE.target_logical_size(2) == (768, 576)
+    viewer = load_viewer()
+    assert viewer.target_logical_size(2) == (768, 576)
 
 
 def test_target_geometry_at_one_x_scale():
-    assert MODULE.target_logical_size(1) == (1536, 1152)
+    viewer = load_viewer()
+    assert viewer.target_logical_size(1) == (1536, 1152)
 
 
 def test_target_geometry_rejects_invalid_scale():
+    viewer = load_viewer()
     with pytest.raises(ValueError, match="scale factor"):
-        MODULE.target_logical_size(0)
+        viewer.target_logical_size(0)
 
 
 def test_vmrun_parser_matches_only_the_exact_xp_vmx():
-    xp = str(MODULE.VMX)
+    viewer = load_viewer()
+    xp = str(viewer.VMX)
     other = "/home/waterrun/VM/Windows/Windows 10/Windows 10.vmx"
     output = f"Total running VMs: 2\n{xp}\n{other}\n"
-    assert MODULE.VMX.resolve() in MODULE.parse_running_vms(output)
-    assert Path(other).resolve() in MODULE.parse_running_vms(output)
-    assert MODULE.target_is_running(output)
+    assert viewer.VMX.resolve() in viewer.parse_running_vms(output)
+    assert Path(other).resolve() in viewer.parse_running_vms(output)
+    assert viewer.target_is_running(output)
 
 
 def test_mutating_commands_contain_only_the_exact_xp_vmx():
-    expected = str(MODULE.VMX)
-    start = MODULE.build_vmrun_start_command()
-    resize = MODULE.build_resolution_command()
+    viewer = load_viewer()
+    expected = str(viewer.VMX)
+    start = viewer.build_vmrun_start_command()
+    resize = viewer.build_resolution_command()
     assert start == ["/usr/bin/vmrun", "start", expected, "nogui"]
     assert resize == [
         "/usr/bin/vmcli",
@@ -97,7 +107,7 @@ Run:
 python3 -m pytest /tmp/test_vmware_xp_150.py -q
 ```
 
-Expected: collection fails with `FileNotFoundError` for `/home/waterrun/.local/bin/vmware-xp-150`.
+Expected: all 5 tests fail with `viewer script is not installed`; this proves the tests are red because the viewer feature is absent.
 
 - [ ] **Step 3: Create the complete viewer application**
 
