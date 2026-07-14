@@ -48,6 +48,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter sends / Enter makes a new line',
     'chat.errorLabel' => 'Error',
     'chat.streamWarning' => 'Connection interrupted. Streaming has been stopped.',
+    'chat.responseFailed' => 'Unable to get a response',
     'chat.createFailed' => 'Create chat failed',
     'chat.reloadFailed' => 'Reload failed',
     'chat.deleteFailed' => 'Delete failed',

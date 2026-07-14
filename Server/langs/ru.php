@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter отправляет / Enter перенос строки',
     'chat.errorLabel' => 'Ошибка',
     'chat.streamWarning' => 'Соединение прервано. Поток остановлен.',
+    'chat.responseFailed' => 'Не удалось получить ответ',
     'chat.createFailed' => 'Не удалось создать чат',
     'chat.reloadFailed' => 'Не удалось перезагрузить',
     'chat.deleteFailed' => 'Не удалось удалить',

@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter 전송 / Enter 줄바꿈',
     'chat.errorLabel' => '오류',
     'chat.streamWarning' => '연결이 끊겼습니다. 스트림이 중지되었습니다.',
+    'chat.responseFailed' => '응답을 받을 수 없습니다',
     'chat.createFailed' => '대화 만들기 실패',
     'chat.reloadFailed' => '다시 불러오기 실패',
     'chat.deleteFailed' => '삭제 실패',

@@ -33,6 +33,10 @@ For Windows XP, use this stunnel build:
 
 https://www.stunnel.org/archive/5.x/stunnel-5.26-installer.exe
 
+No proxy, hosts-file edit, or manual stunnel startup is required. On the
+first HTTPS request stoneChat starts stunnel in the background and generates
+an SNI- and hostname-verifying configuration for the selected API host.
+
 * Configuration
 
 Copy the sample config:
@@ -141,6 +145,21 @@ model = MiniMax-M3
 stream = true
 max_tokens = 1024
 timeout = 60
+#+end_src
+
+DeepSeek V4 Pro example:
+
+#+begin_src ini
+[Model Deepseek]
+active = 1
+label = DeepSeek V4 Pro
+type = openai
+api_base = https://api.deepseek.com
+api_key = YOUR_DEEPSEEK_API_KEY_HERE
+model = deepseek-v4-pro
+stream = false
+max_tokens = 1024
+timeout = 120
 #+end_src
 
 Unused sample models may remain in ~CONF.ini~, but set them inactive:

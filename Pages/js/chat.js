@@ -586,6 +586,13 @@
         sc_scrollToBottom();
     }
 
+    function sc_alertResponseError(message) {
+        if (typeof window.alert !== 'function') { return; }
+        window.alert(sc_tr('chat.responseFailed',
+                           'Unable to get a response') + ': '
+                     + String(message || 'unknown_error'));
+    }
+
     function sc_refreshHistoryActive(chatId) {
         if (!window.SC || !window.SC.Api || !window.SC.App
             || typeof window.SC.Api.getHistory !== 'function'
@@ -751,6 +758,7 @@
                                        'Connection interrupted. Streaming has been stopped.');
                     }
                     sc_renderError(bodyNode, errMsg);
+                    sc_alertResponseError(errMsg);
                 }
             }
         );
@@ -831,6 +839,7 @@
                                        'Connection interrupted. Streaming has been stopped.');
                     }
                     sc_renderError(bodyNode, errMsg);
+                    sc_alertResponseError(errMsg);
                 }
             }
         );

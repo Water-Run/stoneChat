@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter送信 / Enter改行',
     'chat.errorLabel' => 'エラー',
     'chat.streamWarning' => '接続が中断されました。ストリームを停止しました。',
+    'chat.responseFailed' => '応答を取得できません',
     'chat.createFailed' => 'チャット作成失敗',
     'chat.reloadFailed' => '再読込失敗',
     'chat.deleteFailed' => '削除失敗',

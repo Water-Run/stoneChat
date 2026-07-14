@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter envoie / Enter nouvelle ligne',
     'chat.errorLabel' => 'Erreur',
     'chat.streamWarning' => 'Connexion interrompue. Le flux est arrêté.',
+    'chat.responseFailed' => 'Impossible d’obtenir une réponse',
     'chat.createFailed' => 'Échec de création',
     'chat.reloadFailed' => 'Échec du rechargement',
     'chat.deleteFailed' => 'Échec de suppression',

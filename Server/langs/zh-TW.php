@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter發送 / Enter換行',
     'chat.errorLabel' => '錯誤',
     'chat.streamWarning' => '連接已中斷，流式傳輸已停止。',
+    'chat.responseFailed' => '無法取得回覆',
     'chat.createFailed' => '新建對話失敗',
     'chat.reloadFailed' => '重新載入失敗',
     'chat.deleteFailed' => '刪除失敗',

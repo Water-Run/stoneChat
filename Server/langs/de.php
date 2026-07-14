@@ -46,6 +46,7 @@ return array(
     'chat.sendHintShift' => 'Shift+Enter sendet / Enter neue Zeile',
     'chat.errorLabel' => 'Fehler',
     'chat.streamWarning' => 'Verbindung unterbrochen. Streaming wurde gestoppt.',
+    'chat.responseFailed' => 'Keine Antwort erhalten',
     'chat.createFailed' => 'Chat konnte nicht erstellt werden',
     'chat.reloadFailed' => 'Laden fehlgeschlagen',
     'chat.deleteFailed' => 'Löschen fehlgeschlagen',
