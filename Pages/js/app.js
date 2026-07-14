@@ -348,8 +348,8 @@
           +   escHtml(runtime.os || '-') + '</p>'
           + '<p>' + escHtml(tr('about.author', 'Author')) + ': WaterRun.</p>'
           + '<p>' + escHtml(tr('about.github', 'GitHub')) + ': '
-          +   '<a href="https://github.com/WaterRun/stoneChat" target="_blank">'
-          +   'github.com/WaterRun/stoneChat</a></p>';
+          +   '<a href="https://github.com/Water-Run/stoneChat" target="_blank" rel="noopener noreferrer">'
+          +   'github.com/Water-Run/stoneChat</a></p>';
     }
 
     function fillNewChatList() {
@@ -434,7 +434,7 @@
                   +       'onclick="SC.App.connectCheck(\'' + escJs(pid) + '\')">'
                   +       escHtml(tr('chat.test', 'Test')) + '</a>'
                   +     '<a class="btn" href="javascript:void(0)" '
-                  +       'onclick="SC.App.pickProvider(\'' + escJs(pid) + '\')">'
+                  +       'onclick="return SC.App.pickProvider(\'' + escJs(pid) + '\')">'
                   +       escHtml(tr('chat.use', 'Use')) + '</a>'
                   +   '</div>';
             html += '</li>';
@@ -466,7 +466,7 @@
         if (!resp || !resp.ok || !resp.data || !resp.data.id) {
             alert(tr('chat.createFailed', 'Create chat failed') + ': '
                 + errText(resp));
-            return;
+            return false;
         }
         var newId = resp.data.id;
 
@@ -479,7 +479,9 @@
                 }
                 window.location.href = dest;
             } catch (e) { /* ignore */ }
-            return;
+            /* IE6 otherwise evaluates the anchor's javascript:void(0)
+             * after onclick and can cancel the queued navigation. */
+            return false;
         }
 
         // Refresh sidebar list so the brand-new conversation appears.
@@ -490,6 +492,7 @@
         renderHistoryList(rows);
 
         loadChat(newId);
+        return false;
     }
 
     // -------------------------------------------------------------------------
@@ -647,6 +650,7 @@
         if (typeof location !== 'undefined') {
             location.href = loginUrl;
         }
+        return false;
     }
 
     // -------------------------------------------------------------------------
@@ -729,7 +733,16 @@
          * Only wire non-navigation actions here. */
         bindEvent($id('sc-reload-config-btn'), 'click', reloadConfig);
         bindEvent($id('sc-open-config-btn'),   'click', openConfigFile);
-        bindEvent($id('sc-logout-btn'),        'click', logout);
+        bindEvent($id('sc-logout-btn'), 'click', function (e) {
+            e = e || window.event;
+            if (e) {
+                if (typeof e.preventDefault === 'function') {
+                    e.preventDefault();
+                }
+                e.returnValue = false;
+            }
+            return logout();
+        });
         bindEvent($id('sc-history-search'),    'keyup', function () {
             var node = $id('sc-history-search');
             historySearchText = node ? String(node.value || '').toLowerCase() : '';

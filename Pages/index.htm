@@ -5,8 +5,8 @@
 <meta name="robots" content="noindex,nofollow" />
 <title>stoneChat</title>
 <link rel="stylesheet" type="text/css" href="css/main.css?v=20260711a" />
-<script type="text/javascript" src="js/i18n.js?v=20260711a"></script>
-<script type="text/javascript" src="js/api.js?v=20260711a"></script>
+<script type="text/javascript" src="js/i18n.js?v=20260714a"></script>
+<script type="text/javascript" src="js/api.js?v=20260714a"></script>
 </head>
 <body onload="scLoginInit()">
 <div class="wrap">
@@ -32,7 +32,7 @@
 </div>
 <div class="login-slogan-block">
   <div class="login-slogan-retro">"a caveman peeking at modern technology"</div>
-  <div class="login-slogan-github">view more at <a href="https://github.com/WaterRun/stoneChat" target="_blank">github.com/WaterRun/stoneChat</a></div>
+  <div class="login-slogan-github">view more at <a href="https://github.com/Water-Run/stoneChat" target="_blank" rel="noopener noreferrer">github.com/Water-Run/stoneChat</a></div>
 </div>
 <script type="text/javascript">
 //<![CDATA[
@@ -113,6 +113,15 @@ function scLoginInit() {
   }
 }
 
+function scLoginSetText(node, text) {
+  if (!node) { return; }
+  if (typeof node.textContent === 'string') {
+    node.textContent = text;
+  } else {
+    node.innerText = text;
+  }
+}
+
 function scLoginSubmit(form) {
   var api = (typeof window.SC !== 'undefined' && window.SC && window.SC.Api)
             ? window.SC.Api : window.scApi;
@@ -131,9 +140,7 @@ function scLoginSubmit(form) {
   }
   var password = pwd.value || '';
   if (password === '') {
-    if (errEl) {
-      errEl.textContent = t('login.error');
-    }
+    scLoginSetText(errEl, t('login.error'));
     if (typeof pwd.focus === 'function') {
       try { pwd.focus(); } catch (e) { /* ignore */ }
     }
@@ -152,9 +159,7 @@ function scLoginSubmit(form) {
     btn.disabled = true;
     btn.value = inFlightLabel;
   }
-  if (errEl) {
-    errEl.textContent = '';
-  }
+  scLoginSetText(errEl, '');
 
   var result = (api && typeof api.login === 'function')
     ? api.login(password)
@@ -213,13 +218,7 @@ function scLoginSubmit(form) {
     message = t('login.error');
   }
 
-  if (errEl) {
-    if (typeof errEl.textContent === 'string') {
-      errEl.textContent = message;
-    } else {
-      errEl.innerText = message;
-    }
-  }
+  scLoginSetText(errEl, message);
   if (typeof pwd.select === 'function') {
     try { pwd.select(); } catch (e) { /* ignore */ }
   }

@@ -181,24 +181,49 @@ if (!function_exists('sc_resolve_host_ip')) {
         if (preg_match('/^\d{1,3}(?:\.\d{1,3}){3}$/', $host)) {
             return $host;
         }
-        $ip = @gethostbyname($host);
-        if (is_string($ip) && $ip !== '' && $ip !== $host
-            && preg_match('/^\d{1,3}(?:\.\d{1,3}){3}$/', $ip)) {
-            return $ip;
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $ip = @gethostbyname($host);
+            if (is_string($ip) && $ip !== '' && $ip !== $host
+                && preg_match('/^\d{1,3}(?:\.\d{1,3}){3}$/', $ip)) {
+                return $ip;
+            }
+            if ($attempt < 2) {
+                usleep(100000);
+            }
         }
         return $host;
     }
 }
 
+/* sc_stunnel_target_matches($current, $resolved_host, $port)
+ *   Reuse a generated tunnel only when its literal connect target already
+ *   equals PHP's latest resolution. Do not resolve $current again: old
+ *   stunnel builds may fail DNS even after PHP's resolver has recovered. */
+if (!function_exists('sc_stunnel_target_matches')) {
+    function sc_stunnel_target_matches($current, $resolved_host, $port) {
+        if (!is_array($current) || empty($current['host'])
+            || !isset($current['port'])) {
+            return false;
+        }
+        $have = strtolower(trim((string)$current['host']));
+        $want = strtolower(trim((string)$resolved_host));
+        return ($want !== '' && $have === $want
+                && (int)$current['port'] === (int)$port);
+    }
+}
+
 /* sc_generate_stunnel_conf($conf_path, $pid_path, $ca_cert, $local_port,
- *                          $remote_host, $remote_port)
+ *                          $remote_host, $remote_port, $resolved_host)
  *   Write a fresh stunnel.conf for the given target. */
 if (!function_exists('sc_generate_stunnel_conf')) {
     function sc_generate_stunnel_conf($conf_path, $pid_path, $ca_cert,
                                       $local_port, $remote_host,
-                                      $remote_port) {
+                                      $remote_port, $resolved_host = '') {
         $log_path = sc_resolve_path('stunnel.log', dirname($conf_path));
-        $connect_host = sc_resolve_host_ip($remote_host);
+        $connect_host = trim((string)$resolved_host);
+        if ($connect_host === '') {
+            $connect_host = sc_resolve_host_ip($remote_host);
+        }
         $tls_host = trim((string)$remote_host);
         $is_ip = preg_match('/^\d{1,3}(?:\.\d{1,3}){3}$/', $tls_host)
                  || strpos($tls_host, ':') !== false;
@@ -327,13 +352,14 @@ if (!function_exists('sc_stunnel_port_open')) {
     }
 }
 
-/* sc_stunnel_port_pid($port)
- *   On Windows, find the PID that owns the listening proxy port. */
-if (!function_exists('sc_stunnel_port_pid')) {
-    function sc_stunnel_port_pid($port) {
+/* sc_stunnel_port_pids($port)
+ *   On Windows, find every PID listening on the proxy port. Multiple
+ *   reusable-port stunnel processes can coexist after an interrupted restart. */
+if (!function_exists('sc_stunnel_port_pids')) {
+    function sc_stunnel_port_pids($port) {
         $want = (int)$port;
         if ($want <= 0) {
-            return 0;
+            return array();
         }
         $output = array();
         $rc = 0;
@@ -344,8 +370,9 @@ if (!function_exists('sc_stunnel_port_pid')) {
             @exec('netstat -ano -p tcp 2>NUL', $output, $rc);
         }
         if (!is_array($output) || count($output) === 0) {
-            return 0;
+            return array();
         }
+        $pids = array();
         for ($i = 0; $i < count($output); $i++) {
             $line = trim((string)$output[$i]);
             if ($line === '' || stripos($line, 'TCP') !== 0) {
@@ -362,10 +389,34 @@ if (!function_exists('sc_stunnel_port_pid')) {
                 continue;
             }
             if (substr($local, -strlen(':' . $want)) === ':' . $want) {
-                return $pid;
+                if (!in_array($pid, $pids)) {
+                    $pids[] = $pid;
+                }
             }
         }
-        return 0;
+        return $pids;
+    }
+}
+
+/* Backward-compatible single-listener helper. */
+if (!function_exists('sc_stunnel_port_pid')) {
+    function sc_stunnel_port_pid($port) {
+        $pids = sc_stunnel_port_pids($port);
+        return count($pids) > 0 ? (int)$pids[0] : 0;
+    }
+}
+
+/* sc_stunnel_verified_port_pid($pid, $port)
+ *   Return a killable PID only after tasklist identified stunnel. When
+ *   netstat cannot expose a PID but the port is open, return sentinel 1;
+ *   callers may use it for readiness but must never kill it. */
+if (!function_exists('sc_stunnel_verified_port_pid')) {
+    function sc_stunnel_verified_port_pid($pid, $port) {
+        $pid = (int)$pid;
+        if ($pid > 0) {
+            return sc_pid_alive($pid) ? $pid : false;
+        }
+        return sc_stunnel_port_open($port) ? 1 : false;
     }
 }
 
@@ -382,52 +433,93 @@ if (!function_exists('sc_stunnel_is_running')) {
                     $port = (int)$cfg['proxy_port'];
                 }
             }
-            $pid = sc_stunnel_port_pid($port);
-            if ($pid > 0) {
-                /* Prefer PID+name check; if tasklist is unavailable
-                 * (PATH), still trust a live listen port. */
-                if (sc_pid_alive($pid) || sc_stunnel_port_open($port)) {
-                    return $pid;
+            $pids = sc_stunnel_port_pids($port);
+            for ($i = 0; $i < count($pids); $i++) {
+                if (sc_pid_alive($pids[$i])) {
+                    return (int)$pids[$i];
                 }
             }
-            if (sc_stunnel_port_open($port)) {
-                return 1;
-            }
-            return false;
+            /* An occupied port without a verified stunnel owner must stop
+             * restart/reuse, but it must never become a killable PID. */
+            return (count($pids) > 0 || sc_stunnel_port_open($port))
+                 ? 1 : false;
         }
         return sc_stunnel_pid_file_running($pid_path);
     }
 }
 
-/* sc_stunnel_stop($pid_path)
- *   Stop a running stunnel by killing its PID. */
-if (!function_exists('sc_stunnel_stop')) {
-    function sc_stunnel_stop($pid_path) {
-        $pid = sc_stunnel_is_running($pid_path);
-        if ($pid === false) {
-            /* also clear stale pid file. */
-            if (is_file($pid_path)) {
-                @unlink($pid_path);
-            }
-            return true;
+/* sc_stunnel_reusable($pid_path)
+ *   A configured tunnel may be reused only when exactly one verified stunnel
+ *   owns the port. Duplicate or mixed listeners require a safe restart. */
+if (!function_exists('sc_stunnel_reusable')) {
+    function sc_stunnel_reusable($pid_path) {
+        if (strtoupper(substr(PHP_OS, 0, 3)) !== 'WIN') {
+            return sc_stunnel_pid_file_running($pid_path);
         }
+        $port = 8443;
+        if (function_exists('sc_load_modern_config')) {
+            $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..'
+                 . DIRECTORY_SEPARATOR . 'CONF.ini';
+            $cfg = sc_load_modern_config($ini);
+            if (!empty($cfg['proxy_port'])) {
+                $port = (int)$cfg['proxy_port'];
+            }
+        }
+        $pids = sc_stunnel_port_pids($port);
+        if (count($pids) !== 1 || !sc_pid_alive($pids[0])) {
+            return false;
+        }
+        return (int)$pids[0];
+    }
+}
+
+/* sc_stunnel_kill_pid($pid)
+ *   Kill one verified stunnel PID. Kept separate so stop/restart behavior
+ *   can be tested without launching platform commands. */
+if (!function_exists('sc_stunnel_kill_pid')) {
+    function sc_stunnel_kill_pid($pid) {
+        $pid = (int)$pid;
+        if ($pid <= 1) {
+            return false;
+        }
+        $output = array();
+        $rc = 1;
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
             $taskkill = sc_win_sys_cmd('taskkill.exe');
             @exec('"' . $taskkill . '" /F /PID ' . $pid . ' 2>NUL',
                   $output, $rc);
-            if (!isset($rc) || (int)$rc !== 0) {
+            if ((int)$rc !== 0) {
+                $output = array();
                 @exec('taskkill /F /PID ' . $pid . ' 2>NUL',
                       $output, $rc);
             }
         } else {
             @exec('kill ' . $pid . ' 2>/dev/null', $output, $rc);
         }
-        /* give it a moment to die. */
-        usleep(200000);
-        if (is_file($pid_path)) {
-            @unlink($pid_path);
+        return ((int)$rc === 0);
+    }
+}
+
+/* sc_stunnel_stop($pid_path)
+ *   Stop every stunnel listener on the configured proxy port. Repeated
+ *   crash/restart cycles can leave more than one reusable-port listener. */
+if (!function_exists('sc_stunnel_stop')) {
+    function sc_stunnel_stop($pid_path) {
+        for ($attempt = 0; $attempt < 16; $attempt++) {
+            $pid = sc_stunnel_is_running($pid_path);
+            if ($pid === false) {
+                if (is_file($pid_path)) {
+                    @unlink($pid_path);
+                }
+                return true;
+            }
+            /* PID 1 is the port-only fallback: never try to kill it. */
+            if ((int)$pid <= 1 || !sc_stunnel_kill_pid($pid)) {
+                return false;
+            }
+            usleep(200000);
         }
-        return (sc_stunnel_is_running($pid_path) === false);
+        return false;
     }
 }
 
@@ -466,23 +558,12 @@ if (!function_exists('sc_stunnel_start')) {
             $cmd = '"' . $stunnel_exe . '" "' . $conf_path . '"';
             @exec($cmd . ' >/dev/null 2>&1 &');
         }
-        /* wait up to ~3 seconds for the proxy port to open. */
-        $port = 8443;
-        if (function_exists('sc_load_modern_config')) {
-            $ini = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..'
-                 . DIRECTORY_SEPARATOR . 'CONF.ini';
-            $cfg_wait = sc_load_modern_config($ini);
-            if (!empty($cfg_wait['proxy_port'])) {
-                $port = (int)$cfg_wait['proxy_port'];
-            }
-        }
+        /* Wait up to ~3 seconds for a listener whose owner is verified as
+         * stunnel. A merely open port may belong to an unrelated service. */
         for ($i = 0; $i < 30; $i++) {
             usleep(100000);
-            if (sc_stunnel_is_running($pid_path) !== false) {
-                return true;
-            }
-            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN'
-                && sc_stunnel_port_open($port)) {
+            $running_pid = sc_stunnel_reusable($pid_path);
+            if ($running_pid !== false && (int)$running_pid > 1) {
                 return true;
             }
         }
@@ -514,17 +595,19 @@ if (!function_exists('sc_ensure_tunnel')) {
             isset($target['host']) ? $target['host'] : ''
         );
         $current   = sc_read_stunnel_target($conf_path);
-        $cur_host  = !empty($current['host'])
-                     ? sc_resolve_host_ip($current['host']) : '';
-        $matches   = ($want_host !== '')
-                  && $cur_host === $want_host
-                  && !empty($current)
-                  && (int)$current['port'] === (int)$target['port'];
-        if ($matches && sc_stunnel_is_running($pid_path) !== false) {
-            return true;
+        $matches   = sc_stunnel_target_matches(
+            $current, $want_host, $target['port']
+        );
+        if ($matches) {
+            $running_pid = sc_stunnel_reusable($pid_path);
+            if ($running_pid !== false && (int)$running_pid > 1) {
+                return true;
+            }
         }
         /* stop any stale instance. */
-        sc_stunnel_stop($pid_path);
+        if (!sc_stunnel_stop($pid_path)) {
+            return false;
+        }
         /* generate fresh config (connect= prefers resolved IPv4). */
         $ok = sc_generate_stunnel_conf(
             $conf_path,
@@ -532,7 +615,8 @@ if (!function_exists('sc_ensure_tunnel')) {
             $ca_cert,
             $cfg['proxy_port'],
             $target['host'],
-            $target['port']
+            $target['port'],
+            $want_host
         );
         if (!$ok) {
             return false;

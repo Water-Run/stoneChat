@@ -28,7 +28,7 @@
  *       response: { "ok": true, "chat_name": "<title>" }
  *
  *   POST action="connect_check"  { "provider_id": "<id>" }
- *       - ping the provider with a fixed "ping" message via
+ *       - ask the provider for a fixed, minimal "OK" reply via
  *         sc_llm_chat(); record wall-clock latency
  *       response: { "ok": true|false, "latency_ms": <int>,
  *                   "error": "<code or empty>" }
@@ -749,7 +749,10 @@ if (!function_exists('sc_api_chat_handle_connect_check')) {
                          'error' => 'llm_unavailable');
         }
         $timeout = sc_api_chat_provider_timeout($provider);
-        $messages = array(array('role' => 'user', 'content' => 'ping'));
+        $messages = array(array(
+            'role' => 'user',
+            'content' => 'Reply with OK only.',
+        ));
         $start = microtime(true);
         $result = sc_llm_chat($provider, $messages, '');
         $elapsed_ms = (int)round((microtime(true) - $start) * 1000);

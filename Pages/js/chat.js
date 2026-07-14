@@ -65,6 +65,8 @@
 
     var state = {
         activeXhr: null,        // last XHR we own (for stop())
+        activeRequest: null,    // owner object for the current stream
+        requestSeq: 0,          // monotonic request identity
         lastUserMessage: null,  // most recent user text (for regenerate)
         lastChatId: null,       // conversation id used by the last send
         lastAssistantNode: null,// last assistant bubble (for streaming)
@@ -586,6 +588,19 @@
         sc_scrollToBottom();
     }
 
+    function sc_renderStopped(bodyNode) {
+        var message = sc_tr('chat.streamWarning',
+            'Connection interrupted. Streaming has been stopped.');
+        var status = sc_findSendHintNode();
+        if (status) { sc_setText(status, message); }
+        if (bodyNode) {
+            var note = sc_makeEl('div', 'msg-stopped muted', '');
+            sc_setText(note, message);
+            bodyNode.appendChild(note);
+        }
+        sc_scrollToBottom();
+    }
+
     function sc_alertResponseError(message) {
         if (typeof window.alert !== 'function') { return; }
         window.alert(sc_tr('chat.responseFailed',
@@ -705,6 +720,13 @@
         state.lastChatId = chatId;
         state.lastUserMessage = text;
         state.lastAssistantNode = null;
+        var request = {
+            id: state.requestSeq + 1,
+            stopped: false,
+            xhr: null
+        };
+        state.requestSeq = request.id;
+        state.activeRequest = request;
 
         sc_renderMessage('user', text, new Date());
         sc_setStreaming(true);
@@ -718,6 +740,9 @@
 
         var xhr = window.SC.Api.sendMessageStream(chatId, text,
             function (chunk) {
+                if (state.activeRequest !== request || request.stopped) {
+                    return;
+                }
                 assistantText += chunk;
                 if (typeof bodyNode.textContent === 'string') {
                     bodyNode.textContent += chunk;
@@ -727,9 +752,20 @@
                 sc_scrollToBottom();
             },
             function (result) {
+                /* ActiveX abort completion can arrive after a new request
+                 * has started. A stale request must never clear or report
+                 * errors for the current request. */
+                if (state.activeRequest !== request) {
+                    return;
+                }
+                state.activeRequest = null;
                 sc_stopCountdown();
                 sc_setStreaming(false);
                 state.activeXhr = null;
+
+                if (request.stopped) {
+                    return;
+                }
 
                 if (result && result.ok === true) {
                     sc_renderMarkdown(bodyNode, assistantText);
@@ -763,7 +799,19 @@
             }
         );
 
-        state.activeXhr = xhr;
+        request.xhr = xhr;
+        if (state.activeRequest === request) {
+            state.activeXhr = xhr;
+        }
+        /* IE6 ActiveX send() can re-enter the Stop handler before this
+         * assignment. Honour that early cancellation as soon as the XHR
+         * object is returned to us. */
+        if (request.stopped && request.xhr
+            && typeof request.xhr.abort === 'function') {
+            try { request.xhr.abort(); } catch (e) { /* ignore */ }
+            request.xhr = null;
+            if (state.activeXhr === xhr) { state.activeXhr = null; }
+        }
         return { ok: true };
     }
 
@@ -772,12 +820,30 @@
      * ------------------------------------------------------------------ */
 
     function sc_stop() {
-        if (state.activeXhr && typeof state.activeXhr.abort === 'function') {
-            try { state.activeXhr.abort(); } catch (e) { /* ignore */ }
+        var request = state.activeRequest;
+        if (state.isStreaming && request) {
+            request.stopped = true;
+            /* Render before ActiveX abort: IE6 may synchronously re-enter
+             * onreadystatechange or terminate the current COM callback. */
+            var node = state.lastAssistantNode;
+            var body = node
+                     ? (node.getElementsByTagName('div')[0]
+                        || node.lastChild) : null;
+            sc_renderStopped(body);
         }
-        state.activeXhr = null;
-        sc_stopCountdown();
-        sc_setStreaming(false);
+        var xhr = request && request.xhr ? request.xhr : state.activeXhr;
+        /* Relinquish A before aborting it. ActiveX abort may synchronously
+         * complete A and start B; no cleanup after abort may touch B. */
+        if (state.activeRequest === request) {
+            state.activeRequest = null;
+            state.activeXhr = null;
+            sc_stopCountdown();
+            sc_setStreaming(false);
+        }
+        if (request) { request.xhr = null; }
+        if (xhr && typeof xhr.abort === 'function') {
+            try { xhr.abort(); } catch (e) { /* ignore */ }
+        }
     }
 
     /* ------------------------------------------------------------------
@@ -806,6 +872,13 @@
             }
         }
         state.lastAssistantNode = null;
+        var request = {
+            id: state.requestSeq + 1,
+            stopped: false,
+            xhr: null
+        };
+        state.requestSeq = request.id;
+        state.activeRequest = request;
 
         sc_setStreaming(true);
         sc_startCountdown();
@@ -817,6 +890,9 @@
 
         var xhr = window.SC.Api.regenerateChatStream(state.lastChatId,
             function (chunk) {
+                if (state.activeRequest !== request || request.stopped) {
+                    return;
+                }
                 assistantText += chunk;
                 if (typeof bodyNode.textContent === 'string') {
                     bodyNode.textContent += chunk;
@@ -826,9 +902,17 @@
                 sc_scrollToBottom();
             },
             function (result) {
+                if (state.activeRequest !== request) {
+                    return;
+                }
+                state.activeRequest = null;
                 sc_stopCountdown();
                 sc_setStreaming(false);
                 state.activeXhr = null;
+
+                if (request.stopped) {
+                    return;
+                }
 
                 if (result && result.ok === true) {
                     sc_renderMarkdown(bodyNode, assistantText);
@@ -844,7 +928,16 @@
             }
         );
 
-        state.activeXhr = xhr;
+        request.xhr = xhr;
+        if (state.activeRequest === request) {
+            state.activeXhr = xhr;
+        }
+        if (request.stopped && request.xhr
+            && typeof request.xhr.abort === 'function') {
+            try { request.xhr.abort(); } catch (e) { /* ignore */ }
+            request.xhr = null;
+            if (state.activeXhr === xhr) { state.activeXhr = null; }
+        }
         return { ok: true };
     }
 

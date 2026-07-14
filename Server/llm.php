@@ -773,8 +773,17 @@ if (!function_exists('sc_llm_generate_chat_name')) {
                 . "- The line must start with SC_TITLE:.\n"
                 . "- No markdown, no quotes, no explanation.\n\n"
                 . implode("\n", $snippet);
+        /* A chat's normal output cap may be intentionally tiny. Reasoning
+         * models can consume that entire budget before emitting SC_TITLE,
+         * so the internal title harness needs its own small reserve. */
+        $title_provider = $provider_config;
+        if (!isset($title_provider['max_tokens'])
+            || !is_numeric($title_provider['max_tokens'])
+            || (int)$title_provider['max_tokens'] < 512) {
+            $title_provider['max_tokens'] = 512;
+        }
         $result = sc_llm_chat(
-            $provider_config,
+            $title_provider,
             array(
                 array('role' => 'system', 'content' => $system),
                 array('role' => 'user', 'content' => $prompt),

@@ -63,7 +63,7 @@ return array(
     'common.back' => '返回聊天',
     'common.yes' => '是',
     'common.no' => '否',
-    'app.tagline' => 'a caveman peeking at modern technology',
+    'app.tagline' => '一个穴居人窥探现代科技',
     'about.modernWindows' => '现代 Windows',
     'about.modernBrowser' => '现代浏览器',
     'about.timezone' => '时区',
